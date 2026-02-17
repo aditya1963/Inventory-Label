@@ -151,6 +151,7 @@ button.ghost {
 }
 
 .color-picker {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -160,6 +161,17 @@ button.ghost {
   position: absolute;
   opacity: 0;
   pointer-events: none;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .swatch {
@@ -180,6 +192,11 @@ button.ghost {
 .color-picker input[type="radio"]:checked + .swatch {
   border-color: #0f172a;
   box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.45), inset 0 0 0 1px rgba(15, 23, 42, 0.06);
+}
+
+.color-picker input[type="radio"]:focus-visible + .swatch {
+  outline: 2px solid #0f172a;
+  outline-offset: 2px;
 }
 
 input,

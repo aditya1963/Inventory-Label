@@ -4,6 +4,7 @@
   const partInput = document.getElementById("partInput");
   const topColorInputs = document.querySelectorAll('input[name="topColor"]');
   const previewCanvas = document.getElementById("previewCanvas");
+  const previewFrame = document.querySelector(".preview-frame");
   const scanBtn = document.getElementById("scanBtn");
   const pdfBtn = document.getElementById("pdfBtn");
   const printBtn = document.getElementById("printBtn");
@@ -19,7 +20,9 @@
 
   scanBtn.addEventListener("click", scanImage);
   pdfBtn.addEventListener("click", downloadPdf);
-  printBtn.addEventListener("click", printPdf);
+  printBtn.addEventListener("click", () => {
+    void printPdf();
+  });
   clearBtn.addEventListener("click", clearForm);
   releaseInput.addEventListener("input", renderPreview);
   partInput.addEventListener("input", renderPreview);
@@ -27,6 +30,15 @@
     input.addEventListener("change", renderPreview);
   });
   window.addEventListener("resize", renderPreview);
+  window.addEventListener("orientationchange", () => {
+    window.setTimeout(renderPreview, 120);
+  });
+  if (window.ResizeObserver && previewFrame) {
+    const previewResizeObserver = new ResizeObserver(() => {
+      renderPreview();
+    });
+    previewResizeObserver.observe(previewFrame);
+  }
 
   function setStatus(message) {
     scanStatus.textContent = message;
@@ -51,18 +63,28 @@
       scanBtn.disabled = true;
       setStatus("Scanning image...");
 
-      const result = await window.Tesseract.recognize(file, "eng", {
-        logger: (msg) => {
-          if (msg.status === "recognizing text" && typeof msg.progress === "number") {
-            setStatus(`Scanning: ${Math.round(msg.progress * 100)}%`);
-          }
-        }
-      });
-
-      const text = result.data && result.data.text ? result.data.text : "";
+      const text = await runOcr(file, "Scanning");
       const fields = extractFields(text);
       if (!fields.partNumber || !fields.release) {
-        setStatus("Could not find both Release and Part Number. Enter manually.");
+        setStatus("Trying enhanced scan...");
+        const enhancedBlob = await buildEnhancedImage(file);
+        if (enhancedBlob) {
+          const enhancedText = await runOcr(enhancedBlob, "Enhanced scan");
+          const enhancedFields = extractFields(enhancedText);
+          fields.partNumber = fields.partNumber || enhancedFields.partNumber;
+          fields.release = fields.release || enhancedFields.release;
+        }
+      }
+
+      if (!fields.partNumber || !fields.release) {
+        if (fields.release) {
+          releaseInput.value = fields.release;
+        }
+        if (fields.partNumber) {
+          partInput.value = fields.partNumber;
+        }
+        renderPreview();
+        setStatus("Could not find both fields from scan. Please complete manually.");
         return;
       }
 
@@ -77,14 +99,163 @@
     }
   }
 
+  async function runOcr(imageSource, phaseLabel) {
+    const result = await window.Tesseract.recognize(imageSource, "eng", {
+      logger: (msg) => {
+        if (msg.status === "recognizing text" && typeof msg.progress === "number") {
+          setStatus(`${phaseLabel}: ${Math.round(msg.progress * 100)}%`);
+        }
+      }
+    });
+    return result && result.data && result.data.text ? result.data.text : "";
+  }
+
+  async function buildEnhancedImage(file) {
+    let objectUrl = "";
+    try {
+      objectUrl = URL.createObjectURL(file);
+      const image = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = objectUrl;
+      });
+
+      const maxEdge = 1800;
+      const scale = Math.min(
+        1,
+        maxEdge / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height)
+      );
+      const width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
+      const height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) {
+        return null;
+      }
+
+      ctx.drawImage(image, 0, 0, width, height);
+      const imageData = ctx.getImageData(0, 0, width, height);
+      const pixels = imageData.data;
+      for (let i = 0; i < pixels.length; i += 4) {
+        const r = pixels[i];
+        const g = pixels[i + 1];
+        const b = pixels[i + 2];
+        const gray = (0.299 * r) + (0.587 * g) + (0.114 * b);
+        const contrastBoost = Math.max(0, Math.min(255, ((gray - 128) * 1.7) + 128));
+        const bw = contrastBoost > 165 ? 255 : 0;
+        pixels[i] = bw;
+        pixels[i + 1] = bw;
+        pixels[i + 2] = bw;
+      }
+      ctx.putImageData(imageData, 0, 0);
+
+      return await new Promise((resolve) => {
+        canvas.toBlob((blob) => resolve(blob), "image/png");
+      });
+    } catch (_err) {
+      return null;
+    } finally {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    }
+  }
+
   function extractFields(rawText) {
-    const normalized = rawText.replace(/\s+/g, " ").toUpperCase();
-    const partMatch = normalized.match(PART_RE);
-    const releaseMatch = normalized.match(RELEASE_RE) || normalized.match(JOB_RE);
+    const normalizedText = normalizeOcrText(rawText);
+    const lines = normalizedText.split("\n").map((line) => line.trim()).filter(Boolean);
+
+    const partMatch = findBestField(lines, [
+      /\bPART\s*(?:NUMBER|NUM8ER|NO|#)?\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9 _\/\-]{2,})$/,
+      /\bP\/N\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9 _\/\-]{2,})$/
+    ], { minLen: 4, maxLen: 80 });
+
+    const releaseMatch = findBestField(lines, [
+      /\bRELEA[5S]E\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9 _\/\-]{2,})$/,
+      /\bREL\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9 _\/\-]{2,})$/,
+      /\bJOB\s*NUMBER\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9 _\/\-]{2,})$/
+    ], { minLen: 4, maxLen: 30 });
+
+    const flat = lines.join(" ");
+    const fallbackPart = partMatch || findFromFlatText(flat, [
+      /\bPART\s*(?:NUMBER|NUM8ER|NO|#)?\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9 _\/\-]{2,})/,
+      /\bP\/N\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9 _\/\-]{2,})/
+    ], { minLen: 4, maxLen: 80 });
+
+    const fallbackRelease = releaseMatch || findFromFlatText(flat, [
+      /\bRELEA[5S]E\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9 _\/\-]{2,})/,
+      /\bREL\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9 _\/\-]{2,})/,
+      /\bJOB\s*NUMBER\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9 _\/\-]{2,})/
+    ], { minLen: 4, maxLen: 30 });
+
     return {
-      partNumber: partMatch ? partMatch[1].trim() : "",
-      release: releaseMatch ? releaseMatch[1].trim() : ""
+      partNumber: fallbackPart || "",
+      release: fallbackRelease || ""
     };
+  }
+
+  function normalizeOcrText(text) {
+    return (text || "")
+      .toUpperCase()
+      .replace(/\r/g, "\n")
+      .replace(/[|]/g, "I")
+      .replace(/[“”]/g, "\"")
+      .replace(/[^\S\n]+/g, " ");
+  }
+
+  function cleanCandidate(value, limits) {
+    const compact = (value || "")
+      .replace(/[^A-Z0-9_\/\- ]/g, " ")
+      .replace(/\s+/g, "")
+      .trim();
+    if (!compact) {
+      return "";
+    }
+    const minLen = limits && limits.minLen ? limits.minLen : 1;
+    const maxLen = limits && limits.maxLen ? limits.maxLen : 200;
+    if (compact.length < minLen || compact.length > maxLen) {
+      return "";
+    }
+    return compact;
+  }
+
+  function findBestField(lines, patterns, limits) {
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      for (let p = 0; p < patterns.length; p += 1) {
+        const match = line.match(patterns[p]);
+        if (match && match[1]) {
+          const candidate = cleanCandidate(match[1], limits);
+          if (candidate) {
+            return candidate;
+          }
+        }
+      }
+      if (i + 1 < lines.length && /PART|RELEA|REL|JOB\s*NUMBER/.test(line)) {
+        const nextCandidate = cleanCandidate(lines[i + 1], limits);
+        if (nextCandidate) {
+          return nextCandidate;
+        }
+      }
+    }
+    return "";
+  }
+
+  function findFromFlatText(text, patterns, limits) {
+    for (let i = 0; i < patterns.length; i += 1) {
+      const match = text.match(patterns[i]);
+      if (match && match[1]) {
+        const candidate = cleanCandidate(match[1], limits);
+        if (candidate) {
+          return candidate;
+        }
+      }
+    }
+    return "";
   }
 
   function splitIntoTwoLines(text) {
@@ -369,17 +540,29 @@
     }
 
     const ctx = previewCanvas.getContext("2d");
-    const cssWidth = previewCanvas.clientWidth || 780;
-    const cssHeight = previewCanvas.clientHeight || Math.round(cssWidth * (8.5 / 11));
-    const dpr = window.devicePixelRatio || 1;
+    if (!ctx) {
+      return;
+    }
+
+    const frameWidth = previewFrame ? previewFrame.getBoundingClientRect().width : 0;
+    const cssWidth = Math.max(1, Math.floor(frameWidth || previewCanvas.clientWidth || 780));
+    if (cssWidth < 40) {
+      window.requestAnimationFrame(renderPreview);
+      return;
+    }
+    const cssHeight = Math.round(cssWidth * (LETTER_LANDSCAPE_PT.height / LETTER_LANDSCAPE_PT.width));
+    previewCanvas.style.height = `${cssHeight}px`;
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const targetWidth = Math.max(1, Math.floor(cssWidth * dpr));
     const targetHeight = Math.max(1, Math.floor(cssHeight * dpr));
     if (previewCanvas.width !== targetWidth || previewCanvas.height !== targetHeight) {
       previewCanvas.width = targetWidth;
       previewCanvas.height = targetHeight;
     }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, cssWidth, cssHeight);
 
     const scale = Math.min(cssWidth / LETTER_LANDSCAPE_PT.width, cssHeight / LETTER_LANDSCAPE_PT.height);
     const offsetX = (cssWidth - (LETTER_LANDSCAPE_PT.width * scale)) / 2;
@@ -495,28 +678,73 @@
       return;
     }
     const doc = buildPdfDocument(fields.release, fields.partNumber, fields.topColor);
-    const safeRelease = fields.release.replace(/[^A-Z0-9_-]/g, "");
-    const fileName = `inventory_label_${safeRelease || "output"}.pdf`;
+    const fileName = buildOutputFileName(fields.release);
     doc.save(fileName);
     setStatus("PDF downloaded (Letter landscape, fixed bleed).");
   }
 
-  function printPdf() {
+  function buildOutputFileName(release) {
+    const safeRelease = release.replace(/[^A-Z0-9_-]/g, "");
+    return `inventory_label_${safeRelease || "output"}.pdf`;
+  }
+
+  async function trySharePdf(doc, fileName) {
+    if (!navigator.share || typeof File === "undefined") {
+      return false;
+    }
+    try {
+      const blob = doc.output("blob");
+      const file = new File([blob], fileName, { type: "application/pdf" });
+      if (navigator.canShare && !navigator.canShare({ files: [file] })) {
+        return false;
+      }
+      await navigator.share({
+        files: [file],
+        title: "Inventory Label PDF",
+        text: "Choose Print from the share options."
+      });
+      return true;
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  async function printPdf() {
     const fields = getValidatedFields();
     if (!fields) {
       return;
     }
+    const fileName = buildOutputFileName(fields.release);
+
+    // Open tab first to reduce popup blocking on mobile browsers.
+    const printWindow = window.open("", "_blank");
     const doc = buildPdfDocument(fields.release, fields.partNumber, fields.topColor);
     if (typeof doc.autoPrint === "function") {
       doc.autoPrint();
     }
-    const blobUrl = doc.output("bloburl");
-    const printWindow = window.open(blobUrl, "_blank");
-    if (!printWindow) {
-      setStatus("Pop-up blocked. Allow pop-ups to open print preview.");
+
+    const blob = doc.output("blob");
+    const blobUrl = URL.createObjectURL(blob);
+
+    if (printWindow) {
+      printWindow.location.href = blobUrl;
+      setTimeout(() => {
+        URL.revokeObjectURL(blobUrl);
+      }, 120000);
+      setStatus("Print preview opened (Letter landscape, fixed bleed).");
       return;
     }
-    setStatus("Print preview opened (Letter landscape, fixed bleed).");
+
+    const shared = await trySharePdf(doc, fileName);
+    if (shared) {
+      URL.revokeObjectURL(blobUrl);
+      setStatus("Share sheet opened. Choose Print / AirPrint.");
+      return;
+    }
+
+    URL.revokeObjectURL(blobUrl);
+    doc.save(fileName);
+    setStatus("Print preview blocked on this device. PDF downloaded instead.");
   }
 
   function clearForm() {

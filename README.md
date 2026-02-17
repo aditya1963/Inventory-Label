@@ -2,7 +2,11 @@
 
 Static web app for mobile/iPad/desktop to:
 - OCR `RELEASE` and `PART NUMBER` from an inventory ticket image
-- generate an A4 landscape PDF label
+- generate a Letter landscape PDF label
+- use a fixed hardcoded bleed margin (not user-editable)
+- choose top-half color from 5 preset options
+- live preview of final Letter layout before export
+- download PDF or open direct print preview
 - keep data in-browser only (no backend, no database)
 
 ## Files

@@ -119,6 +119,15 @@ button.ghost {
   color: #fff;
 }
 
+#printBtn {
+  background: #16a34a;
+  color: #fff;
+}
+
+#printBtn:hover {
+  background: #15803d;
+}
+
 .status {
   margin: 10px 0 0;
   color: var(--muted);
@@ -136,8 +145,46 @@ button.ghost {
   color: #1e293b;
 }
 
+.field-grid .field-label {
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.color-picker input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.swatch {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  border: 2px solid #cbd5e1;
+  background: var(--swatch);
+  cursor: pointer;
+  display: inline-flex;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.05);
+}
+
+.swatch span {
+  font-size: 0;
+}
+
+.color-picker input[type="radio"]:checked + .swatch {
+  border-color: #0f172a;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.45), inset 0 0 0 1px rgba(15, 23, 42, 0.06);
+}
+
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
@@ -154,6 +201,28 @@ textarea {
   margin: 10px 0 0;
   color: #334155;
   font-weight: 600;
+}
+
+.card .note {
+  margin: 10px 0 0;
+  color: #334155;
+  font-weight: 600;
+}
+
+.preview-frame {
+  width: min(100%, 700px);
+  margin: 0 auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #e2e8f0;
+}
+
+#previewCanvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 11 / 8.5;
+  background: #fff;
 }
 
 @media (max-width: 640px) {

@@ -13,7 +13,7 @@
   <main class="app-shell">
     <section class="hero">
       <h1>Inventory Label Maker</h1>
-      <p>Create A4 landscape labels from ticket images. Data stays in your browser only.</p>
+      <p>Create Letter landscape labels from ticket images. Data stays in your browser only.</p>
     </section>
 
     <section class="card">
@@ -36,16 +36,53 @@
 
         <label for="partInput">Part Number</label>
         <textarea id="partInput" rows="3" maxlength="120" placeholder="Long part number will wrap to next line"></textarea>
+
+        <span class="field-label">Top Half Color</span>
+        <div class="color-picker" role="radiogroup" aria-label="Top Half Color">
+          <input id="topColorSky" type="radio" name="topColor" value="#DCEBFF" checked>
+          <label for="topColorSky" class="swatch" style="--swatch:#DCEBFF" title="Sky Blue">
+            <span>Sky Blue</span>
+          </label>
+
+          <input id="topColorMint" type="radio" name="topColor" value="#D9FBE7">
+          <label for="topColorMint" class="swatch" style="--swatch:#D9FBE7" title="Mint">
+            <span>Mint</span>
+          </label>
+
+          <input id="topColorSand" type="radio" name="topColor" value="#FFF1D6">
+          <label for="topColorSand" class="swatch" style="--swatch:#FFF1D6" title="Sand">
+            <span>Sand</span>
+          </label>
+
+          <input id="topColorRose" type="radio" name="topColor" value="#FFE1E6">
+          <label for="topColorRose" class="swatch" style="--swatch:#FFE1E6" title="Rose">
+            <span>Rose</span>
+          </label>
+
+          <input id="topColorGray" type="radio" name="topColor" value="#E5E7EB">
+          <label for="topColorGray" class="swatch" style="--swatch:#E5E7EB" title="Light Gray">
+            <span>Light Gray</span>
+          </label>
+        </div>
       </div>
     </section>
 
+    <section class="card">
+      <h2>3) Live Preview</h2>
+      <div class="preview-frame">
+        <canvas id="previewCanvas" aria-label="Label preview"></canvas>
+      </div>
+      <p class="note">Preview matches Letter landscape layout with fixed bleed margin.</p>
+    </section>
+
     <section class="card actions">
-      <h2>3) Generate PDF</h2>
+      <h2>4) Generate PDF</h2>
       <div class="row">
-        <button id="pdfBtn" type="button" class="primary">Download A4 Label</button>
+        <button id="pdfBtn" type="button" class="primary">Download Letter Label</button>
+        <button id="printBtn" type="button">Print Letter Label</button>
         <button id="clearBtn" type="button" class="ghost">Clear</button>
       </div>
-      <p class="note">No backend. No database. No upload storage.</p>
+      <p class="note">No backend. No database. No upload storage. Print uses your browser print dialog.</p>
     </section>
   </main>
 

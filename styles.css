@@ -1,0 +1,176 @@
+:root {
+  --bg-a: #0f172a;
+  --bg-b: #1e293b;
+  --card: #f8fafc;
+  --ink: #0b1324;
+  --accent: #0ea5e9;
+  --accent-dark: #0369a1;
+  --muted: #475569;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Source Sans 3", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 15% 10%, #1d4ed8 0%, transparent 30%),
+    radial-gradient(circle at 85% 15%, #0284c7 0%, transparent 24%),
+    linear-gradient(135deg, var(--bg-a), var(--bg-b));
+}
+
+.app-shell {
+  width: min(920px, 94vw);
+  margin: 20px auto 36px;
+  display: grid;
+  gap: 14px;
+}
+
+.hero {
+  background: linear-gradient(135deg, #e0f2fe, #ffffff);
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: 0 14px 30px rgba(2, 6, 23, 0.3);
+}
+
+.hero h1 {
+  margin: 0;
+  font-family: "Oswald", sans-serif;
+  font-size: clamp(1.8rem, 4.5vw, 3rem);
+  letter-spacing: 0.02em;
+}
+
+.hero p {
+  margin: 8px 0 0;
+  color: #334155;
+  font-weight: 600;
+}
+
+.card {
+  background: var(--card);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.24);
+}
+
+.card h2 {
+  margin: 0 0 12px;
+  font-family: "Oswald", sans-serif;
+  letter-spacing: 0.03em;
+  font-size: 1.25rem;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.file-input {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.file-input input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  cursor: pointer;
+}
+
+button {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+button.primary:hover {
+  background: var(--accent-dark);
+}
+
+button.ghost {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+#scanBtn {
+  background: #0f172a;
+  color: #fff;
+}
+
+.status {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.field-grid label {
+  font-weight: 700;
+  color: #1e293b;
+}
+
+input,
+textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 1.05rem;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.actions .note {
+  margin: 10px 0 0;
+  color: #334155;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    width: 95vw;
+    margin-top: 14px;
+  }
+
+  .card,
+  .hero {
+    border-radius: 12px;
+    padding: 14px;
+  }
+
+  button,
+  .file-input {
+    width: 100%;
+    justify-content: center;
+  }
+}

@@ -1,0 +1,17 @@
+# Ignore everything by default
+*
+
+# Keep only GitHub Pages web app files
+!.gitignore
+!README.md
+!index.html
+!styles.css
+!app.js
+!CNAME
+!.nojekyll
+
+# Keep this folder local-only (old Python app and generated files)
+obsolete/
+
+# Local environment
+.venv/

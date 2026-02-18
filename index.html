@@ -16,7 +16,14 @@
       <p>Create A4 landscape labels from ticket images. Data stays in your browser only.</p>
     </section>
 
-    <section class="card">
+    <section class="card mode-switch">
+      <div class="mode-tabs">
+        <button id="modeAdvancedBtn" type="button" class="mode-btn active">Full Sticker Scan</button>
+        <button id="modeQuickBtn" type="button" class="mode-btn">Quick Barcode</button>
+      </div>
+    </section>
+
+    <section class="card advanced-only">
       <h2>1) Scan Sticker (Optional)</h2>
       <div class="row">
         <label class="file-input">
@@ -28,7 +35,7 @@
       <p id="scanStatus" class="status">Ready</p>
     </section>
 
-    <section class="card">
+    <section class="card advanced-only">
       <h2>2) Confirm Fields</h2>
       <div class="field-grid">
         <label for="releaseInput">Release</label>
@@ -67,7 +74,7 @@
       </div>
     </section>
 
-    <section class="card">
+    <section class="card advanced-only">
       <h2>3) Live Preview</h2>
       <div class="preview-frame">
         <canvas id="previewCanvas" aria-label="Label preview"></canvas>
@@ -75,7 +82,7 @@
       <p class="note">Preview matches A4 landscape layout with fixed bleed margin.</p>
     </section>
 
-    <section class="card actions">
+    <section class="card actions advanced-only">
       <h2>4) Generate PDF</h2>
       <div class="row">
         <button id="pdfBtn" type="button" class="primary">Download A4 Label</button>
@@ -83,6 +90,39 @@
         <button id="clearBtn" type="button" class="ghost">Clear</button>
       </div>
       <p class="note">No backend. No database. No upload storage. Print uses your browser print dialog.</p>
+    </section>
+
+    <section class="card quick-only is-hidden">
+      <h2>1) Live Barcode Scan</h2>
+      <div class="quick-video-frame">
+        <video id="quickBarcodeVideo" autoplay muted playsinline></video>
+      </div>
+      <div class="row">
+        <button id="startQuickScanBtn" type="button">Start Camera Scan</button>
+        <button id="stopQuickScanBtn" type="button" class="ghost">Stop Scan</button>
+      </div>
+      <p id="quickScanStatus" class="status">Camera idle</p>
+    </section>
+
+    <section class="card quick-only is-hidden">
+      <h2>2) Confirm Fields</h2>
+      <div class="field-grid">
+        <label for="quickPartInput">Part Number (From Barcode)</label>
+        <input id="quickPartInput" type="text" placeholder="Will auto-fill from barcode">
+
+        <label for="quickReleaseInput">Release (Manual)</label>
+        <input id="quickReleaseInput" type="text" maxlength="40" placeholder="e.g. M22849G">
+      </div>
+    </section>
+
+    <section class="card actions quick-only is-hidden">
+      <h2>3) Generate PDF</h2>
+      <div class="row">
+        <button id="quickPdfBtn" type="button" class="primary">Download A4 Label</button>
+        <button id="quickPrintBtn" type="button">Print A4 Label</button>
+        <button id="quickClearBtn" type="button" class="ghost">Clear</button>
+      </div>
+      <p class="note">Quick mode: barcode for part number + manual release input.</p>
     </section>
   </main>
 

@@ -5,11 +5,24 @@
   const topColorInputs = document.querySelectorAll('input[name="topColor"]');
   const previewCanvas = document.getElementById("previewCanvas");
   const previewFrame = document.querySelector(".preview-frame");
+  const modeAdvancedBtn = document.getElementById("modeAdvancedBtn");
+  const modeQuickBtn = document.getElementById("modeQuickBtn");
+  const advancedSections = document.querySelectorAll(".advanced-only");
+  const quickSections = document.querySelectorAll(".quick-only");
   const scanBtn = document.getElementById("scanBtn");
   const pdfBtn = document.getElementById("pdfBtn");
   const printBtn = document.getElementById("printBtn");
   const clearBtn = document.getElementById("clearBtn");
   const scanStatus = document.getElementById("scanStatus");
+  const quickBarcodeVideo = document.getElementById("quickBarcodeVideo");
+  const quickPartInput = document.getElementById("quickPartInput");
+  const quickReleaseInput = document.getElementById("quickReleaseInput");
+  const quickScanStatus = document.getElementById("quickScanStatus");
+  const startQuickScanBtn = document.getElementById("startQuickScanBtn");
+  const stopQuickScanBtn = document.getElementById("stopQuickScanBtn");
+  const quickPdfBtn = document.getElementById("quickPdfBtn");
+  const quickPrintBtn = document.getElementById("quickPrintBtn");
+  const quickClearBtn = document.getElementById("quickClearBtn");
 
   const PART_RE = /PART\s*NUMBER\s*[:#]?\s*([A-Z0-9_\/-]+)/i;
   const RELEASE_RE = /RELEASE\s*[:#]?\s*([A-Z0-9_\/-]+)/i;
@@ -19,6 +32,11 @@
   const PART_WRAP_THRESHOLD = 18;
   const RELEASE_MIN_LEN = 4;
   const RELEASE_MAX_LEN = 14;
+  let currentMode = "advanced";
+  let quickScanStream = null;
+  let quickScanTimer = null;
+  let quickDetectBusy = false;
+  let quickBarcodeDetector = null;
 
   scanBtn.addEventListener("click", scanImage);
   pdfBtn.addEventListener("click", downloadPdf);
@@ -26,6 +44,17 @@
     void printPdf();
   });
   clearBtn.addEventListener("click", clearForm);
+  modeAdvancedBtn.addEventListener("click", () => setMode("advanced"));
+  modeQuickBtn.addEventListener("click", () => setMode("quick"));
+  startQuickScanBtn.addEventListener("click", () => {
+    void startQuickBarcodeScan();
+  });
+  stopQuickScanBtn.addEventListener("click", stopQuickBarcodeScan);
+  quickPdfBtn.addEventListener("click", downloadQuickPdf);
+  quickPrintBtn.addEventListener("click", () => {
+    void printQuickPdf();
+  });
+  quickClearBtn.addEventListener("click", clearQuickForm);
   releaseInput.addEventListener("input", renderPreview);
   partInput.addEventListener("input", renderPreview);
   topColorInputs.forEach((input) => {
@@ -41,6 +70,7 @@
     });
     previewResizeObserver.observe(previewFrame);
   }
+  window.addEventListener("beforeunload", stopQuickBarcodeScan);
 
   function setStatus(message) {
     scanStatus.textContent = message;
@@ -48,6 +78,33 @@
 
   function normalizeValue(value) {
     return value.trim().toUpperCase();
+  }
+
+  function setMode(mode) {
+    currentMode = mode === "quick" ? "quick" : "advanced";
+    const showQuick = currentMode === "quick";
+
+    advancedSections.forEach((section) => {
+      section.classList.toggle("is-hidden", showQuick);
+    });
+    quickSections.forEach((section) => {
+      section.classList.toggle("is-hidden", !showQuick);
+    });
+
+    modeAdvancedBtn.classList.toggle("active", !showQuick);
+    modeQuickBtn.classList.toggle("active", showQuick);
+
+    if (!showQuick) {
+      stopQuickBarcodeScan();
+    } else {
+      setQuickStatus("Camera idle");
+    }
+  }
+
+  function setQuickStatus(message) {
+    if (quickScanStatus) {
+      quickScanStatus.textContent = message;
+    }
   }
 
   async function scanImage() {
@@ -118,26 +175,9 @@
       return "";
     }
     try {
-      const preferredFormats = [
-        "code_128",
-        "code_39",
-        "codabar",
-        "itf",
-        "ean_13",
-        "ean_8",
-        "upc_a",
-        "upc_e"
-      ];
-
-      let detector;
-      if (typeof window.BarcodeDetector.getSupportedFormats === "function") {
-        const supported = await window.BarcodeDetector.getSupportedFormats();
-        const formats = preferredFormats.filter((f) => supported.includes(f));
-        detector = formats.length > 0
-          ? new window.BarcodeDetector({ formats })
-          : new window.BarcodeDetector();
-      } else {
-        detector = new window.BarcodeDetector();
+      const detector = await createBarcodeDetector();
+      if (!detector) {
+        return "";
       }
 
       const image = await loadImageFromFile(file);
@@ -156,16 +196,12 @@
         if (!Array.isArray(barcodes) || barcodes.length === 0) {
           continue;
         }
-        for (let j = 0; j < barcodes.length; j += 1) {
-          const raw = (barcodes[j] && barcodes[j].rawValue) ? String(barcodes[j].rawValue) : "";
-          const cleaned = cleanCandidate(raw, { minLen: 4, maxLen: 80 });
-          if (!isLikelyPartToken(cleaned)) {
-            continue;
-          }
-          const score = scoreBarcodeCandidate(cleaned);
+        const bestFromSource = pickBestBarcodeValue(barcodes);
+        if (bestFromSource) {
+          const score = scoreBarcodeCandidate(bestFromSource);
           if (score > bestScore) {
             bestScore = score;
-            bestValue = cleaned;
+            bestValue = bestFromSource;
           }
         }
       }
@@ -173,6 +209,35 @@
       return bestValue;
     } catch (_err) {
       return "";
+    }
+  }
+
+  async function createBarcodeDetector() {
+    if (!("BarcodeDetector" in window)) {
+      return null;
+    }
+    try {
+      const preferredFormats = [
+        "code_128",
+        "code_39",
+        "codabar",
+        "itf",
+        "ean_13",
+        "ean_8",
+        "upc_a",
+        "upc_e"
+      ];
+
+      if (typeof window.BarcodeDetector.getSupportedFormats === "function") {
+        const supported = await window.BarcodeDetector.getSupportedFormats();
+        const formats = preferredFormats.filter((f) => supported.includes(f));
+        if (formats.length > 0) {
+          return new window.BarcodeDetector({ formats });
+        }
+      }
+      return new window.BarcodeDetector();
+    } catch (_err) {
+      return null;
     }
   }
 
@@ -278,6 +343,115 @@
       score -= 15;
     }
     return score;
+  }
+
+  function pickBestBarcodeValue(barcodes) {
+    if (!Array.isArray(barcodes) || barcodes.length === 0) {
+      return "";
+    }
+    let bestValue = "";
+    let bestScore = -1;
+    for (let j = 0; j < barcodes.length; j += 1) {
+      const raw = (barcodes[j] && barcodes[j].rawValue) ? String(barcodes[j].rawValue) : "";
+      const cleaned = cleanCandidate(raw, { minLen: 4, maxLen: 80 });
+      if (!isLikelyPartToken(cleaned)) {
+        continue;
+      }
+      const score = scoreBarcodeCandidate(cleaned);
+      if (score > bestScore) {
+        bestScore = score;
+        bestValue = cleaned;
+      }
+    }
+    return bestValue;
+  }
+
+  async function startQuickBarcodeScan() {
+    if (currentMode !== "quick") {
+      setMode("quick");
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setQuickStatus("Camera not supported in this browser.");
+      return;
+    }
+    if (!("BarcodeDetector" in window)) {
+      setQuickStatus("Barcode scanning not supported on this browser. Use Full Sticker Scan.");
+      return;
+    }
+    if (quickScanStream) {
+      setQuickStatus("Scanning already running...");
+      return;
+    }
+
+    quickBarcodeDetector = quickBarcodeDetector || await createBarcodeDetector();
+    if (!quickBarcodeDetector) {
+      setQuickStatus("Could not initialize barcode detector.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      });
+      quickScanStream = stream;
+      quickBarcodeVideo.srcObject = stream;
+      await quickBarcodeVideo.play();
+
+      setQuickStatus("Camera live. Point barcode at center.");
+      quickScanTimer = window.setInterval(() => {
+        void runQuickBarcodeTick();
+      }, 220);
+    } catch (_err) {
+      setQuickStatus("Unable to access camera. Check permissions.");
+      stopQuickBarcodeScan();
+    }
+  }
+
+  async function runQuickBarcodeTick() {
+    if (!quickBarcodeDetector || !quickBarcodeVideo || quickDetectBusy) {
+      return;
+    }
+    if (!quickScanStream || quickBarcodeVideo.readyState < 2) {
+      return;
+    }
+    quickDetectBusy = true;
+    try {
+      const barcodes = await quickBarcodeDetector.detect(quickBarcodeVideo);
+      const best = pickBestBarcodeValue(barcodes);
+      if (best) {
+        if (quickPartInput.value !== best) {
+          quickPartInput.value = best;
+        }
+        setQuickStatus(`Detected part: ${best}`);
+      }
+    } catch (_err) {
+      // Ignore single-frame scan errors while camera stream stabilizes.
+    } finally {
+      quickDetectBusy = false;
+    }
+  }
+
+  function stopQuickBarcodeScan() {
+    if (quickScanTimer) {
+      window.clearInterval(quickScanTimer);
+      quickScanTimer = null;
+    }
+    quickDetectBusy = false;
+    if (quickScanStream) {
+      quickScanStream.getTracks().forEach((track) => track.stop());
+      quickScanStream = null;
+    }
+    if (quickBarcodeVideo && quickBarcodeVideo.srcObject) {
+      quickBarcodeVideo.srcObject = null;
+    }
+    if (currentMode === "quick") {
+      setQuickStatus("Camera stopped.");
+    }
   }
 
   async function runOcr(imageSource, phaseLabel) {
@@ -999,15 +1173,35 @@
     return { ...values, topColor };
   }
 
+  function getQuickValidatedFields() {
+    const partNumber = normalizeValue(quickPartInput.value);
+    const release = normalizeValue(quickReleaseInput.value);
+    if (!partNumber || !release) {
+      setQuickStatus("Part Number and Release are required.");
+      return null;
+    }
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+      setQuickStatus("PDF library failed to load. Refresh and try again.");
+      return null;
+    }
+    const topColor = parseTopColor();
+    return { partNumber, release, topColor };
+  }
+
   function downloadPdf() {
     const fields = getValidatedFields();
     if (!fields) {
       return;
     }
-    const doc = buildPdfDocument(fields.release, fields.partNumber, fields.topColor);
-    const fileName = buildOutputFileName(fields.release);
-    doc.save(fileName);
-    setStatus("PDF downloaded (A4 landscape, fixed bleed).");
+    runDownloadExport(fields, setStatus);
+  }
+
+  function downloadQuickPdf() {
+    const fields = getQuickValidatedFields();
+    if (!fields) {
+      return;
+    }
+    runDownloadExport(fields, setQuickStatus);
   }
 
   function buildOutputFileName(release) {
@@ -1036,11 +1230,30 @@
     }
   }
 
+  function runDownloadExport(fields, statusSetter) {
+    const doc = buildPdfDocument(fields.release, fields.partNumber, fields.topColor);
+    const fileName = buildOutputFileName(fields.release);
+    doc.save(fileName);
+    statusSetter("PDF downloaded (A4 landscape, fixed bleed).");
+  }
+
   async function printPdf() {
     const fields = getValidatedFields();
     if (!fields) {
       return;
     }
+    await runPrintExport(fields, setStatus);
+  }
+
+  async function printQuickPdf() {
+    const fields = getQuickValidatedFields();
+    if (!fields) {
+      return;
+    }
+    await runPrintExport(fields, setQuickStatus);
+  }
+
+  async function runPrintExport(fields, statusSetter) {
     const fileName = buildOutputFileName(fields.release);
 
     // Open tab first to reduce popup blocking on mobile browsers.
@@ -1058,20 +1271,20 @@
       setTimeout(() => {
         URL.revokeObjectURL(blobUrl);
       }, 120000);
-      setStatus("Print preview opened (A4 landscape, fixed bleed).");
+      statusSetter("Print preview opened (A4 landscape, fixed bleed).");
       return;
     }
 
     const shared = await trySharePdf(doc, fileName);
     if (shared) {
       URL.revokeObjectURL(blobUrl);
-      setStatus("Share sheet opened. Choose Print / AirPrint.");
+      statusSetter("Share sheet opened. Choose Print / AirPrint.");
       return;
     }
 
     URL.revokeObjectURL(blobUrl);
     doc.save(fileName);
-    setStatus("Print preview blocked on this device. PDF downloaded instead.");
+    statusSetter("Print preview blocked on this device. PDF downloaded instead.");
   }
 
   function clearForm() {
@@ -1086,5 +1299,12 @@
     setStatus("Cleared.");
   }
 
+  function clearQuickForm() {
+    quickPartInput.value = "";
+    quickReleaseInput.value = "";
+    setQuickStatus("Cleared.");
+  }
+
+  setMode("quick");
   renderPreview();
 })();

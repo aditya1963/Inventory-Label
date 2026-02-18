@@ -64,6 +64,26 @@ body {
   font-size: 1.25rem;
 }
 
+.is-hidden {
+  display: none !important;
+}
+
+.mode-tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mode-btn {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.mode-btn.active {
+  background: #0f172a;
+  color: #fff;
+}
+
 .row {
   display: flex;
   flex-wrap: wrap;
@@ -119,12 +139,26 @@ button.ghost {
   color: #fff;
 }
 
+#startQuickScanBtn {
+  background: #0f172a;
+  color: #fff;
+}
+
 #printBtn {
   background: #16a34a;
   color: #fff;
 }
 
 #printBtn:hover {
+  background: #15803d;
+}
+
+#quickPrintBtn {
+  background: #16a34a;
+  color: #fff;
+}
+
+#quickPrintBtn:hover {
   background: #15803d;
 }
 
@@ -240,6 +274,22 @@ textarea {
   width: 100%;
   aspect-ratio: 297 / 210;
   background: #fff;
+}
+
+.quick-video-frame {
+  width: min(100%, 700px);
+  margin: 0 auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0b1324;
+}
+
+#quickBarcodeVideo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
 }
 
 @media (max-width: 640px) {

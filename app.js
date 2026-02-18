@@ -17,6 +17,8 @@
   const A4_LANDSCAPE_PT = { width: 841.89, height: 595.28 };
   const FIXED_BLEED_MM = 10;
   const PART_WRAP_THRESHOLD = 18;
+  const RELEASE_MIN_LEN = 4;
+  const RELEASE_MAX_LEN = 14;
 
   scanBtn.addEventListener("click", scanImage);
   pdfBtn.addEventListener("click", downloadPdf);
@@ -74,8 +76,9 @@
       // 2) OCR pass for release + fallback for part.
       const text = await runOcr(file, "Scanning");
       const ocrFields = extractFields(text);
+      const bottomRelease = extractReleaseFromBottom(text);
       fields.partNumber = fields.partNumber || ocrFields.partNumber;
-      fields.release = ocrFields.release || extractReleaseFromLastLine(text);
+      fields.release = bottomRelease || ocrFields.release || extractReleaseFromLastLine(text);
 
       if (!fields.partNumber || !fields.release) {
         setStatus("Trying enhanced scan...");
@@ -83,8 +86,12 @@
         if (enhancedBlob) {
           const enhancedText = await runOcr(enhancedBlob, "Enhanced scan");
           const enhancedFields = extractFields(enhancedText);
+          const enhancedBottomRelease = extractReleaseFromBottom(enhancedText);
           fields.partNumber = fields.partNumber || enhancedFields.partNumber;
-          fields.release = fields.release || enhancedFields.release || extractReleaseFromLastLine(enhancedText);
+          fields.release = fields.release
+            || enhancedBottomRelease
+            || enhancedFields.release
+            || extractReleaseFromLastLine(enhancedText);
         }
       }
 
@@ -237,10 +244,13 @@
     ], { minLen: 4, maxLen: 80 });
 
     const releaseMatch = findBestField(lines, [
-      /\bRELEA[5S]E\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9 _\/\-]{2,})$/,
-      /\bREL\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9 _\/\-]{2,})$/,
-      /\bJOB\s*NUMBER\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9 _\/\-]{2,})$/
-    ], { minLen: 4, maxLen: 30 });
+      /\bRELEA[5S]E\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9_\/\-]{2,})$/,
+      /\bREL\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9_\/\-]{2,})$/,
+      /\bJOB\s*NUMBER\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9_\/\-]{2,})$/
+    ], { minLen: RELEASE_MIN_LEN, maxLen: RELEASE_MAX_LEN }, {
+      valueValidator: isLikelyReleaseToken,
+      nextLineValidator: isLikelyReleaseToken
+    });
 
     const flat = lines.join(" ");
     const fallbackPart = partMatch || findFromFlatText(flat, [
@@ -249,10 +259,12 @@
     ], { minLen: 4, maxLen: 80 });
 
     const fallbackRelease = releaseMatch || findFromFlatText(flat, [
-      /\bRELEA[5S]E\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9 _\/\-]{2,})/,
-      /\bREL\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9 _\/\-]{2,})/,
-      /\bJOB\s*NUMBER\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9 _\/\-]{2,})/
-    ], { minLen: 4, maxLen: 30 });
+      /\bRELEA[5S]E\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9_\/\-]{2,})/,
+      /\bREL\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9_\/\-]{2,})/,
+      /\bJOB\s*NUMBER\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9_\/\-]{2,})/
+    ], { minLen: RELEASE_MIN_LEN, maxLen: RELEASE_MAX_LEN }, {
+      valueValidator: isLikelyReleaseToken
+    });
 
     return {
       partNumber: fallbackPart || "",
@@ -270,28 +282,76 @@
     const last = lines[lines.length - 1];
     const labelMatch = last.match(/\b(?:RELEA[5S]E|REL|JOB\s*NUMBER)\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9_\/\-]{2,})/);
     if (labelMatch && labelMatch[1]) {
-      const value = cleanCandidate(labelMatch[1], { minLen: 4, maxLen: 30 });
-      if (value) {
+      const value = cleanCandidate(labelMatch[1], { minLen: RELEASE_MIN_LEN, maxLen: RELEASE_MAX_LEN });
+      if (isLikelyReleaseToken(value)) {
         return value;
       }
     }
 
     const afterColon = last.match(/[:#\-]\s*([A-Z0-9][A-Z0-9_\/\-]{2,})$/);
     if (afterColon && afterColon[1]) {
-      const value = cleanCandidate(afterColon[1], { minLen: 4, maxLen: 30 });
-      if (value) {
+      const value = cleanCandidate(afterColon[1], { minLen: RELEASE_MIN_LEN, maxLen: RELEASE_MAX_LEN });
+      if (isLikelyReleaseToken(value)) {
         return value;
       }
     }
 
-    const tokens = last.match(/[A-Z0-9][A-Z0-9_\/\-]{3,29}/g) || [];
+    const tokens = last.match(/[A-Z0-9][A-Z0-9_\/\-]{3,14}/g) || [];
     for (let i = tokens.length - 1; i >= 0; i -= 1) {
-      const value = cleanCandidate(tokens[i], { minLen: 4, maxLen: 30 });
-      if (value) {
+      const value = cleanCandidate(tokens[i], { minLen: RELEASE_MIN_LEN, maxLen: RELEASE_MAX_LEN });
+      if (isLikelyReleaseToken(value)) {
         return value;
       }
     }
     return "";
+  }
+
+  function extractReleaseFromBottom(rawText) {
+    const normalized = normalizeOcrText(rawText);
+    const lines = normalized.split("\n").map((line) => line.trim()).filter(Boolean);
+    if (lines.length === 0) {
+      return "";
+    }
+
+    const tail = lines.slice(Math.max(0, lines.length - 8));
+    for (let i = tail.length - 1; i >= 0; i -= 1) {
+      const line = tail[i];
+      if (!line || /DESCRIPTION|QTY|DATE|PO#|PO |EMP#/.test(line)) {
+        continue;
+      }
+
+      const patterns = [
+        /\bRELEA[5S]E\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9_\/\-]{2,14})/,
+        /\bRELEA[5S]E([A-Z0-9][A-Z0-9_\/\-]{2,14})/,
+        /\bREL\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9_\/\-]{2,14})/,
+        /\bJOB\s*NUMBER\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9_\/\-]{2,14})/
+      ];
+
+      for (let p = 0; p < patterns.length; p += 1) {
+        const match = line.match(patterns[p]);
+        if (match && match[1]) {
+          const candidate = cleanCandidate(match[1], { minLen: RELEASE_MIN_LEN, maxLen: RELEASE_MAX_LEN });
+          if (isLikelyReleaseToken(candidate)) {
+            return candidate;
+          }
+        }
+      }
+    }
+    return "";
+  }
+
+  function isLikelyReleaseToken(value) {
+    const v = cleanCandidate(value, { minLen: RELEASE_MIN_LEN, maxLen: RELEASE_MAX_LEN });
+    if (!v) {
+      return false;
+    }
+    if (!/[A-Z]/.test(v) || !/\d/.test(v)) {
+      return false;
+    }
+    if (v.includes("DESCRIPTION") || v.includes("SUPPLY") || v.includes("VDC")) {
+      return false;
+    }
+    return true;
   }
 
   function normalizeOcrText(text) {
@@ -319,21 +379,22 @@
     return compact;
   }
 
-  function findBestField(lines, patterns, limits) {
+  function findBestField(lines, patterns, limits, options) {
+    const opts = options || {};
     for (let i = 0; i < lines.length; i += 1) {
       const line = lines[i];
       for (let p = 0; p < patterns.length; p += 1) {
         const match = line.match(patterns[p]);
         if (match && match[1]) {
           const candidate = cleanCandidate(match[1], limits);
-          if (candidate) {
+          if (candidate && (!opts.valueValidator || opts.valueValidator(candidate))) {
             return candidate;
           }
         }
       }
       if (i + 1 < lines.length && /PART|RELEA|REL|JOB\s*NUMBER/.test(line)) {
         const nextCandidate = cleanCandidate(lines[i + 1], limits);
-        if (nextCandidate) {
+        if (nextCandidate && (!opts.nextLineValidator || opts.nextLineValidator(nextCandidate))) {
           return nextCandidate;
         }
       }
@@ -341,12 +402,13 @@
     return "";
   }
 
-  function findFromFlatText(text, patterns, limits) {
+  function findFromFlatText(text, patterns, limits, options) {
+    const opts = options || {};
     for (let i = 0; i < patterns.length; i += 1) {
       const match = text.match(patterns[i]);
       if (match && match[1]) {
         const candidate = cleanCandidate(match[1], limits);
-        if (candidate) {
+        if (candidate && (!opts.valueValidator || opts.valueValidator(candidate))) {
           return candidate;
         }
       }

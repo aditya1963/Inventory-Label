@@ -66,29 +66,55 @@
       setStatus("Scanning image...");
 
       const fields = { partNumber: "", release: "" };
+      let partMismatch = false;
 
       // 1) Prefer barcode for part number when supported.
       const barcodePart = await detectBarcodePartNumber(file);
+
+      // 2) OCR pass.
+      const text = await runOcr(file, "Scanning");
+      const ocrColonPart = extractPartAfterFirstColonBeforeDescription(text);
+      const releaseAfterLastColon = extractReleaseAfterLastColon(text);
+      const ocrFields = extractFields(text);
+
       if (barcodePart) {
         fields.partNumber = barcodePart;
+        if (ocrColonPart && !partTokensEquivalent(barcodePart, ocrColonPart)) {
+          partMismatch = true;
+        }
+      } else {
+        fields.partNumber = ocrColonPart || ocrFields.partNumber;
       }
 
-      // 2) OCR pass for release + fallback for part.
-      const text = await runOcr(file, "Scanning");
-      const ocrFields = extractFields(text);
-      const bottomRelease = extractReleaseFromBottom(text);
-      fields.partNumber = fields.partNumber || ocrFields.partNumber;
-      fields.release = bottomRelease || ocrFields.release || extractReleaseFromLastLine(text);
+      fields.release =
+        releaseAfterLastColon
+        || extractReleaseFromBottom(text)
+        || ocrFields.release
+        || extractReleaseFromLastLine(text);
 
       if (!fields.partNumber || !fields.release) {
         setStatus("Trying enhanced scan...");
         const enhancedBlob = await buildEnhancedImage(file);
         if (enhancedBlob) {
           const enhancedText = await runOcr(enhancedBlob, "Enhanced scan");
+          const enhancedColonPart = extractPartAfterFirstColonBeforeDescription(enhancedText);
+          const enhancedLastColonRelease = extractReleaseAfterLastColon(enhancedText);
           const enhancedFields = extractFields(enhancedText);
           const enhancedBottomRelease = extractReleaseFromBottom(enhancedText);
-          fields.partNumber = fields.partNumber || enhancedFields.partNumber;
+
+          if (!fields.partNumber) {
+            if (barcodePart) {
+              fields.partNumber = barcodePart;
+              if (enhancedColonPart && !partTokensEquivalent(barcodePart, enhancedColonPart)) {
+                partMismatch = true;
+              }
+            } else {
+              fields.partNumber = enhancedColonPart || enhancedFields.partNumber;
+            }
+          }
+
           fields.release = fields.release
+            || enhancedLastColonRelease
             || enhancedBottomRelease
             || enhancedFields.release
             || extractReleaseFromLastLine(enhancedText);
@@ -110,7 +136,11 @@
       releaseInput.value = fields.release;
       partInput.value = fields.partNumber;
       renderPreview();
-      setStatus("Fields detected. Check preview, then download or print.");
+      if (partMismatch) {
+        setStatus("Scanned with barcode priority. Part barcode and OCR text did not fully match, so barcode value was used.");
+      } else {
+        setStatus("Fields detected. Check preview, then download or print.");
+      }
     } catch (err) {
       setStatus(`OCR failed: ${err.message || "Unknown error"}`);
     } finally {
@@ -145,27 +175,144 @@
         detector = new window.BarcodeDetector();
       }
 
-      const bitmap = await createImageBitmap(file);
-      const barcodes = await detector.detect(bitmap);
-      if (typeof bitmap.close === "function") {
-        bitmap.close();
-      }
-      if (!Array.isArray(barcodes) || barcodes.length === 0) {
-        return "";
-      }
+      const image = await loadImageFromFile(file);
+      const sources = buildBarcodeSources(image);
+      let bestValue = "";
+      let bestScore = -1;
 
-      let best = "";
-      for (let i = 0; i < barcodes.length; i += 1) {
-        const raw = (barcodes[i] && barcodes[i].rawValue) ? String(barcodes[i].rawValue) : "";
-        const cleaned = cleanCandidate(raw, { minLen: 4, maxLen: 80 });
-        if (cleaned && cleaned.length > best.length) {
-          best = cleaned;
+      for (let i = 0; i < sources.length; i += 1) {
+        const source = sources[i];
+        let barcodes = [];
+        try {
+          barcodes = await detector.detect(source);
+        } catch (_err) {
+          barcodes = [];
+        }
+        if (!Array.isArray(barcodes) || barcodes.length === 0) {
+          continue;
+        }
+        for (let j = 0; j < barcodes.length; j += 1) {
+          const raw = (barcodes[j] && barcodes[j].rawValue) ? String(barcodes[j].rawValue) : "";
+          const cleaned = cleanCandidate(raw, { minLen: 4, maxLen: 80 });
+          if (!isLikelyPartToken(cleaned)) {
+            continue;
+          }
+          const score = scoreBarcodeCandidate(cleaned);
+          if (score > bestScore) {
+            bestScore = score;
+            bestValue = cleaned;
+          }
         }
       }
-      return best;
+
+      return bestValue;
     } catch (_err) {
       return "";
     }
+  }
+
+  async function loadImageFromFile(file) {
+    let objectUrl = "";
+    try {
+      objectUrl = URL.createObjectURL(file);
+      return await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = objectUrl;
+      });
+    } finally {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    }
+  }
+
+  function buildBarcodeSources(image) {
+    const sources = [image];
+    const topBands = [
+      { top: 0.0, height: 0.42, left: 0.0, width: 1.0, scale: 1.0, enhance: false },
+      { top: 0.0, height: 0.32, left: 0.0, width: 1.0, scale: 1.6, enhance: false },
+      { top: 0.0, height: 0.26, left: 0.03, width: 0.94, scale: 2.0, enhance: false },
+      { top: 0.0, height: 0.22, left: 0.02, width: 0.96, scale: 2.2, enhance: true }
+    ];
+    for (let i = 0; i < topBands.length; i += 1) {
+      const cfg = topBands[i];
+      const canvas = createBarcodeCanvas(image, cfg);
+      if (canvas) {
+        sources.push(canvas);
+      }
+    }
+    return sources;
+  }
+
+  function createBarcodeCanvas(image, cfg) {
+    const srcW = image.naturalWidth || image.width;
+    const srcH = image.naturalHeight || image.height;
+    if (!srcW || !srcH) {
+      return null;
+    }
+
+    const sx = Math.max(0, Math.floor(srcW * cfg.left));
+    const sy = Math.max(0, Math.floor(srcH * cfg.top));
+    const sw = Math.max(1, Math.floor(srcW * cfg.width));
+    const sh = Math.max(1, Math.floor(srcH * cfg.height));
+
+    const dw = Math.max(1, Math.floor(sw * cfg.scale));
+    const dh = Math.max(1, Math.floor(sh * cfg.scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = dw;
+    canvas.height = dh;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) {
+      return null;
+    }
+
+    ctx.drawImage(image, sx, sy, sw, sh, 0, 0, dw, dh);
+    if (cfg.enhance) {
+      const imageData = ctx.getImageData(0, 0, dw, dh);
+      const px = imageData.data;
+      for (let i = 0; i < px.length; i += 4) {
+        const gray = (0.299 * px[i]) + (0.587 * px[i + 1]) + (0.114 * px[i + 2]);
+        const boosted = Math.max(0, Math.min(255, ((gray - 128) * 1.9) + 128));
+        px[i] = boosted;
+        px[i + 1] = boosted;
+        px[i + 2] = boosted;
+      }
+      ctx.putImageData(imageData, 0, 0);
+    }
+    return canvas;
+  }
+
+  function isLikelyPartToken(value) {
+    const v = cleanCandidate(value, { minLen: 4, maxLen: 80 });
+    if (!v) {
+      return false;
+    }
+    if (v.includes("RELEASE") || v.includes("DESCRIPTION") || v.includes("JOB") || v.includes("NUMBER")) {
+      return false;
+    }
+    if (!/[A-Z0-9]/.test(v)) {
+      return false;
+    }
+    return true;
+  }
+
+  function scoreBarcodeCandidate(value) {
+    let score = value.length;
+    if (/[A-Z]/.test(value)) {
+      score += 12;
+    }
+    if (/\d/.test(value)) {
+      score += 8;
+    }
+    if (value.length >= 6 && value.length <= 24) {
+      score += 10;
+    }
+    if (value.length > 40) {
+      score -= 15;
+    }
+    return score;
   }
 
   async function runOcr(imageSource, phaseLabel) {
@@ -232,6 +379,57 @@
         URL.revokeObjectURL(objectUrl);
       }
     }
+  }
+
+  function extractPartAfterFirstColonBeforeDescription(rawText) {
+    const normalized = normalizeOcrText(rawText);
+    const singleLine = normalized.replace(/\n+/g, " ").replace(/\s+/g, " ").trim();
+    if (!singleLine) {
+      return "";
+    }
+
+    const firstColon = singleLine.indexOf(":");
+    if (firstColon < 0) {
+      return "";
+    }
+
+    let end = singleLine.length;
+    const descriptionIndex = singleLine.indexOf("DESCRIPTION", firstColon + 1);
+    if (descriptionIndex > firstColon) {
+      end = descriptionIndex;
+    }
+
+    const rawPart = singleLine.slice(firstColon + 1, end).trim();
+    const candidate = cleanCandidate(rawPart, { minLen: 4, maxLen: 80 });
+    if (!isLikelyPartToken(candidate)) {
+      return "";
+    }
+    return candidate;
+  }
+
+  function extractReleaseAfterLastColon(rawText) {
+    const normalized = normalizeOcrText(rawText);
+    const idx = normalized.lastIndexOf(":");
+    if (idx < 0 || idx >= normalized.length - 1) {
+      return "";
+    }
+    const tail = normalized.slice(idx + 1).trim();
+    const token = (tail.match(/[A-Z0-9][A-Z0-9_\/\-]{3,20}/) || [])[0] || "";
+    const candidate = cleanCandidate(token, { minLen: RELEASE_MIN_LEN, maxLen: RELEASE_MAX_LEN });
+    if (isLikelyReleaseToken(candidate)) {
+      return candidate;
+    }
+    return "";
+  }
+
+  function partTokensEquivalent(a, b) {
+    const normalizePart = (v) => (v || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const left = normalizePart(a);
+    const right = normalizePart(b);
+    if (!left || !right) {
+      return false;
+    }
+    return left === right || left.includes(right) || right.includes(left);
   }
 
   function extractFields(rawText) {

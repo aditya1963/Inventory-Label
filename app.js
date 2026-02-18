@@ -66,31 +66,16 @@
       setStatus("Scanning image...");
 
       const fields = { partNumber: "", release: "" };
-      let partMismatch = false;
 
-      // 1) Prefer barcode for part number when supported.
+      // 1) Barcode for part number (primary).
       const barcodePart = await detectBarcodePartNumber(file);
 
-      // 2) OCR pass.
+      // 2) OCR pass: part from first-colon region, release from last colon.
       const text = await runOcr(file, "Scanning");
       const ocrColonPart = extractPartAfterFirstColonBeforeDescription(text);
       const releaseAfterLastColon = extractReleaseAfterLastColon(text);
-      const ocrFields = extractFields(text);
-
-      if (barcodePart) {
-        fields.partNumber = barcodePart;
-        if (ocrColonPart && !partTokensEquivalent(barcodePart, ocrColonPart)) {
-          partMismatch = true;
-        }
-      } else {
-        fields.partNumber = ocrColonPart || ocrFields.partNumber;
-      }
-
-      fields.release =
-        releaseAfterLastColon
-        || extractReleaseFromBottom(text)
-        || ocrFields.release
-        || extractReleaseFromLastLine(text);
+      fields.partNumber = barcodePart || ocrColonPart;
+      fields.release = releaseAfterLastColon;
 
       if (!fields.partNumber || !fields.release) {
         setStatus("Trying enhanced scan...");
@@ -99,25 +84,9 @@
           const enhancedText = await runOcr(enhancedBlob, "Enhanced scan");
           const enhancedColonPart = extractPartAfterFirstColonBeforeDescription(enhancedText);
           const enhancedLastColonRelease = extractReleaseAfterLastColon(enhancedText);
-          const enhancedFields = extractFields(enhancedText);
-          const enhancedBottomRelease = extractReleaseFromBottom(enhancedText);
 
-          if (!fields.partNumber) {
-            if (barcodePart) {
-              fields.partNumber = barcodePart;
-              if (enhancedColonPart && !partTokensEquivalent(barcodePart, enhancedColonPart)) {
-                partMismatch = true;
-              }
-            } else {
-              fields.partNumber = enhancedColonPart || enhancedFields.partNumber;
-            }
-          }
-
-          fields.release = fields.release
-            || enhancedLastColonRelease
-            || enhancedBottomRelease
-            || enhancedFields.release
-            || extractReleaseFromLastLine(enhancedText);
+          fields.partNumber = fields.partNumber || barcodePart || enhancedColonPart;
+          fields.release = fields.release || enhancedLastColonRelease;
         }
       }
 
@@ -136,11 +105,7 @@
       releaseInput.value = fields.release;
       partInput.value = fields.partNumber;
       renderPreview();
-      if (partMismatch) {
-        setStatus("Scanned with barcode priority. Part barcode and OCR text did not fully match, so barcode value was used.");
-      } else {
-        setStatus("Fields detected. Check preview, then download or print.");
-      }
+      setStatus("Fields detected. Check preview, then download or print.");
     } catch (err) {
       setStatus(`OCR failed: ${err.message || "Unknown error"}`);
     } finally {
@@ -388,6 +353,15 @@
       return "";
     }
 
+    // Preferred pattern: PART NUMBER:<value>
+    const labelMatch = singleLine.match(/\bPART\s*NUMBER\s*:\s*([A-Z0-9][A-Z0-9_\/\-]{3,80})/);
+    if (labelMatch && labelMatch[1]) {
+      const labeled = cleanCandidate(labelMatch[1], { minLen: 4, maxLen: 80 });
+      if (isLikelyPartToken(labeled)) {
+        return labeled;
+      }
+    }
+
     const firstColon = singleLine.indexOf(":");
     if (firstColon < 0) {
       return "";
@@ -409,6 +383,13 @@
 
   function extractReleaseAfterLastColon(rawText) {
     const normalized = normalizeOcrText(rawText);
+    const directRelease = normalized.match(/\bRELEA[5S]E\s*:\s*([A-Z0-9][A-Z0-9_\/\-]{3,20})/);
+    if (directRelease && directRelease[1]) {
+      const direct = cleanCandidate(directRelease[1], { minLen: RELEASE_MIN_LEN, maxLen: RELEASE_MAX_LEN });
+      if (isLikelyReleaseToken(direct)) {
+        return direct;
+      }
+    }
     const idx = normalized.lastIndexOf(":");
     if (idx < 0 || idx >= normalized.length - 1) {
       return "";
@@ -420,16 +401,6 @@
       return candidate;
     }
     return "";
-  }
-
-  function partTokensEquivalent(a, b) {
-    const normalizePart = (v) => (v || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-    const left = normalizePart(a);
-    const right = normalizePart(b);
-    if (!left || !right) {
-      return false;
-    }
-    return left === right || left.includes(right) || right.includes(left);
   }
 
   function extractFields(rawText) {

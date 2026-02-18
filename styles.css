@@ -238,7 +238,7 @@ textarea {
 #previewCanvas {
   display: block;
   width: 100%;
-  aspect-ratio: 11 / 8.5;
+  aspect-ratio: 297 / 210;
   background: #fff;
 }
 

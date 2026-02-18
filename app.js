@@ -14,8 +14,8 @@
   const PART_RE = /PART\s*NUMBER\s*[:#]?\s*([A-Z0-9_\/-]+)/i;
   const RELEASE_RE = /RELEASE\s*[:#]?\s*([A-Z0-9_\/-]+)/i;
   const JOB_RE = /JOB\s*NUMBER\s*[:#]?\s*([A-Z0-9_\/-]+)/i;
-  const LETTER_LANDSCAPE_PT = { width: 792, height: 612 };
-  const FIXED_BLEED_MM = 6.35;
+  const A4_LANDSCAPE_PT = { width: 841.89, height: 595.28 };
+  const FIXED_BLEED_MM = 10;
   const PART_WRAP_THRESHOLD = 18;
 
   scanBtn.addEventListener("click", scanImage);
@@ -551,7 +551,7 @@
     const doc = new jsPDF({
       orientation: "landscape",
       unit: "pt",
-      format: "letter"
+      format: "a4"
     });
 
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -646,7 +646,7 @@
       window.requestAnimationFrame(renderPreview);
       return;
     }
-    const cssHeight = Math.round(cssWidth * (LETTER_LANDSCAPE_PT.height / LETTER_LANDSCAPE_PT.width));
+    const cssHeight = Math.round(cssWidth * (A4_LANDSCAPE_PT.height / A4_LANDSCAPE_PT.width));
     previewCanvas.style.height = `${cssHeight}px`;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -660,25 +660,25 @@
     ctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const scale = Math.min(cssWidth / LETTER_LANDSCAPE_PT.width, cssHeight / LETTER_LANDSCAPE_PT.height);
-    const offsetX = (cssWidth - (LETTER_LANDSCAPE_PT.width * scale)) / 2;
-    const offsetY = (cssHeight - (LETTER_LANDSCAPE_PT.height * scale)) / 2;
+    const scale = Math.min(cssWidth / A4_LANDSCAPE_PT.width, cssHeight / A4_LANDSCAPE_PT.height);
+    const offsetX = (cssWidth - (A4_LANDSCAPE_PT.width * scale)) / 2;
+    const offsetY = (cssHeight - (A4_LANDSCAPE_PT.height * scale)) / 2;
     const mapX = (x) => offsetX + (x * scale);
     const mapY = (y) => offsetY + (y * scale);
 
     ctx.fillStyle = "#ffffff";
-    ctx.fillRect(offsetX, offsetY, LETTER_LANDSCAPE_PT.width * scale, LETTER_LANDSCAPE_PT.height * scale);
+    ctx.fillRect(offsetX, offsetY, A4_LANDSCAPE_PT.width * scale, A4_LANDSCAPE_PT.height * scale);
     ctx.strokeStyle = "#cbd5e1";
     ctx.lineWidth = 1;
     ctx.strokeRect(
       offsetX + 0.5,
       offsetY + 0.5,
-      (LETTER_LANDSCAPE_PT.width * scale) - 1,
-      (LETTER_LANDSCAPE_PT.height * scale) - 1
+      (A4_LANDSCAPE_PT.width * scale) - 1,
+      (A4_LANDSCAPE_PT.height * scale) - 1
     );
 
     const topColor = parseTopColor();
-    const layout = getLayout(LETTER_LANDSCAPE_PT.width, LETTER_LANDSCAPE_PT.height);
+    const layout = getLayout(A4_LANDSCAPE_PT.width, A4_LANDSCAPE_PT.height);
     const values = getFieldValuesForLayout(true);
 
     ctx.fillStyle = topColor;
@@ -776,7 +776,7 @@
     const doc = buildPdfDocument(fields.release, fields.partNumber, fields.topColor);
     const fileName = buildOutputFileName(fields.release);
     doc.save(fileName);
-    setStatus("PDF downloaded (Letter landscape, fixed bleed).");
+    setStatus("PDF downloaded (A4 landscape, fixed bleed).");
   }
 
   function buildOutputFileName(release) {
@@ -827,7 +827,7 @@
       setTimeout(() => {
         URL.revokeObjectURL(blobUrl);
       }, 120000);
-      setStatus("Print preview opened (Letter landscape, fixed bleed).");
+      setStatus("Print preview opened (A4 landscape, fixed bleed).");
       return;
     }
 

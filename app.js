@@ -63,8 +63,20 @@
       scanBtn.disabled = true;
       setStatus("Scanning image...");
 
+      const fields = { partNumber: "", release: "" };
+
+      // 1) Prefer barcode for part number when supported.
+      const barcodePart = await detectBarcodePartNumber(file);
+      if (barcodePart) {
+        fields.partNumber = barcodePart;
+      }
+
+      // 2) OCR pass for release + fallback for part.
       const text = await runOcr(file, "Scanning");
-      const fields = extractFields(text);
+      const ocrFields = extractFields(text);
+      fields.partNumber = fields.partNumber || ocrFields.partNumber;
+      fields.release = ocrFields.release || extractReleaseFromLastLine(text);
+
       if (!fields.partNumber || !fields.release) {
         setStatus("Trying enhanced scan...");
         const enhancedBlob = await buildEnhancedImage(file);
@@ -72,7 +84,7 @@
           const enhancedText = await runOcr(enhancedBlob, "Enhanced scan");
           const enhancedFields = extractFields(enhancedText);
           fields.partNumber = fields.partNumber || enhancedFields.partNumber;
-          fields.release = fields.release || enhancedFields.release;
+          fields.release = fields.release || enhancedFields.release || extractReleaseFromLastLine(enhancedText);
         }
       }
 
@@ -96,6 +108,56 @@
       setStatus(`OCR failed: ${err.message || "Unknown error"}`);
     } finally {
       scanBtn.disabled = false;
+    }
+  }
+
+  async function detectBarcodePartNumber(file) {
+    if (!("BarcodeDetector" in window)) {
+      return "";
+    }
+    try {
+      const preferredFormats = [
+        "code_128",
+        "code_39",
+        "codabar",
+        "itf",
+        "ean_13",
+        "ean_8",
+        "upc_a",
+        "upc_e"
+      ];
+
+      let detector;
+      if (typeof window.BarcodeDetector.getSupportedFormats === "function") {
+        const supported = await window.BarcodeDetector.getSupportedFormats();
+        const formats = preferredFormats.filter((f) => supported.includes(f));
+        detector = formats.length > 0
+          ? new window.BarcodeDetector({ formats })
+          : new window.BarcodeDetector();
+      } else {
+        detector = new window.BarcodeDetector();
+      }
+
+      const bitmap = await createImageBitmap(file);
+      const barcodes = await detector.detect(bitmap);
+      if (typeof bitmap.close === "function") {
+        bitmap.close();
+      }
+      if (!Array.isArray(barcodes) || barcodes.length === 0) {
+        return "";
+      }
+
+      let best = "";
+      for (let i = 0; i < barcodes.length; i += 1) {
+        const raw = (barcodes[i] && barcodes[i].rawValue) ? String(barcodes[i].rawValue) : "";
+        const cleaned = cleanCandidate(raw, { minLen: 4, maxLen: 80 });
+        if (cleaned && cleaned.length > best.length) {
+          best = cleaned;
+        }
+      }
+      return best;
+    } catch (_err) {
+      return "";
     }
   }
 
@@ -196,6 +258,40 @@
       partNumber: fallbackPart || "",
       release: fallbackRelease || ""
     };
+  }
+
+  function extractReleaseFromLastLine(rawText) {
+    const normalized = normalizeOcrText(rawText);
+    const lines = normalized.split("\n").map((line) => line.trim()).filter(Boolean);
+    if (lines.length === 0) {
+      return "";
+    }
+
+    const last = lines[lines.length - 1];
+    const labelMatch = last.match(/\b(?:RELEA[5S]E|REL|JOB\s*NUMBER)\b\s*[:#\-]?\s*([A-Z0-9][A-Z0-9_\/\-]{2,})/);
+    if (labelMatch && labelMatch[1]) {
+      const value = cleanCandidate(labelMatch[1], { minLen: 4, maxLen: 30 });
+      if (value) {
+        return value;
+      }
+    }
+
+    const afterColon = last.match(/[:#\-]\s*([A-Z0-9][A-Z0-9_\/\-]{2,})$/);
+    if (afterColon && afterColon[1]) {
+      const value = cleanCandidate(afterColon[1], { minLen: 4, maxLen: 30 });
+      if (value) {
+        return value;
+      }
+    }
+
+    const tokens = last.match(/[A-Z0-9][A-Z0-9_\/\-]{3,29}/g) || [];
+    for (let i = tokens.length - 1; i >= 0; i -= 1) {
+      const value = cleanCandidate(tokens[i], { minLen: 4, maxLen: 30 });
+      if (value) {
+        return value;
+      }
+    }
+    return "";
   }
 
   function normalizeOcrText(text) {

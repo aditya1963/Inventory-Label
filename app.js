@@ -37,6 +37,9 @@
   let quickScanTimer = null;
   let quickDetectBusy = false;
   let quickBarcodeDetector = null;
+  let quickScanEngine = null;
+  let quickZxingReader = null;
+  let quickZxingControls = null;
 
   scanBtn.addEventListener("click", scanImage);
   pdfBtn.addEventListener("click", downloadPdf);
@@ -105,6 +108,14 @@
     if (quickScanStatus) {
       quickScanStatus.textContent = message;
     }
+  }
+
+  function isNativeBarcodeAvailable() {
+    return "BarcodeDetector" in window;
+  }
+
+  function isZxingAvailable() {
+    return !!(window.ZXingBrowser && window.ZXingBrowser.BrowserMultiFormatReader);
   }
 
   async function scanImage() {
@@ -213,7 +224,7 @@
   }
 
   async function createBarcodeDetector() {
-    if (!("BarcodeDetector" in window)) {
+    if (!isNativeBarcodeAvailable()) {
       return null;
     }
     try {
@@ -236,6 +247,21 @@
         }
       }
       return new window.BarcodeDetector();
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function createZXingReader() {
+    if (!isZxingAvailable()) {
+      return null;
+    }
+    if (quickZxingReader) {
+      return quickZxingReader;
+    }
+    try {
+      quickZxingReader = new window.ZXingBrowser.BrowserMultiFormatReader();
+      return quickZxingReader;
     } catch (_err) {
       return null;
     }
@@ -374,18 +400,27 @@
       setQuickStatus("Camera not supported in this browser.");
       return;
     }
-    if (!("BarcodeDetector" in window)) {
-      setQuickStatus("Barcode scanning not supported on this browser. Use Full Sticker Scan.");
-      return;
-    }
-    if (quickScanStream) {
+    if (quickScanStream || quickZxingControls) {
       setQuickStatus("Scanning already running...");
       return;
     }
 
-    quickBarcodeDetector = quickBarcodeDetector || await createBarcodeDetector();
-    if (!quickBarcodeDetector) {
-      setQuickStatus("Could not initialize barcode detector.");
+    if (!isNativeBarcodeAvailable() && !isZxingAvailable()) {
+      setQuickStatus("Barcode scanning not supported on this browser.");
+      return;
+    }
+
+    if (isNativeBarcodeAvailable()) {
+      quickBarcodeDetector = quickBarcodeDetector || await createBarcodeDetector();
+      if (!quickBarcodeDetector) {
+        setQuickStatus("Could not initialize barcode detector.");
+        return;
+      }
+    } else {
+      const started = await startQuickScanWithZXing();
+      if (!started) {
+        setQuickStatus("Could not start fallback scanner on this browser.");
+      }
       return;
     }
 
@@ -399,6 +434,7 @@
         audio: false
       });
       quickScanStream = stream;
+      quickScanEngine = "native";
       quickBarcodeVideo.srcObject = stream;
       await quickBarcodeVideo.play();
 
@@ -412,7 +448,43 @@
     }
   }
 
+  async function startQuickScanWithZXing() {
+    const reader = createZXingReader();
+    if (!reader) {
+      return false;
+    }
+    try {
+      quickScanEngine = "zxing";
+      quickZxingControls = await reader.decodeFromVideoDevice(
+        undefined,
+        quickBarcodeVideo,
+        (result) => {
+          if (!result) {
+            return;
+          }
+          const raw = typeof result.getText === "function" ? result.getText() : String(result.text || "");
+          const cleaned = cleanCandidate(raw, { minLen: 4, maxLen: 80 });
+          if (isLikelyPartToken(cleaned)) {
+            if (quickPartInput.value !== cleaned) {
+              quickPartInput.value = cleaned;
+            }
+            setQuickStatus(`Detected part: ${cleaned}`);
+          }
+        }
+      );
+      setQuickStatus("Camera live. Point barcode at center.");
+      return true;
+    } catch (_err) {
+      quickScanEngine = null;
+      quickZxingControls = null;
+      return false;
+    }
+  }
+
   async function runQuickBarcodeTick() {
+    if (quickScanEngine !== "native") {
+      return;
+    }
     if (!quickBarcodeDetector || !quickBarcodeVideo || quickDetectBusy) {
       return;
     }
@@ -441,6 +513,11 @@
       window.clearInterval(quickScanTimer);
       quickScanTimer = null;
     }
+    if (quickZxingControls && typeof quickZxingControls.stop === "function") {
+      quickZxingControls.stop();
+      quickZxingControls = null;
+    }
+    quickScanEngine = null;
     quickDetectBusy = false;
     if (quickScanStream) {
       quickScanStream.getTracks().forEach((track) => track.stop());

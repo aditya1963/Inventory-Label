@@ -13,37 +13,28 @@
   <main class="app-shell">
     <section class="hero">
       <h1>Inventory Label Maker</h1>
-      <p>Create A4 landscape labels from ticket images. Data stays in your browser only.</p>
+      <p>Enter or scan part/job values, choose color, then print.</p>
     </section>
 
-    <section class="card mode-switch">
-      <div class="mode-tabs">
-        <button id="modeAdvancedBtn" type="button" class="mode-btn active">Full Sticker Scan</button>
-        <button id="modeQuickBtn" type="button" class="mode-btn">Quick Barcode</button>
-      </div>
-    </section>
-
-    <section class="card advanced-only">
-      <h2>1) Scan Sticker (Optional)</h2>
-      <div class="row">
-        <label class="file-input">
-          <span>Choose Image</span>
-          <input id="imageInput" type="file" accept="image/*" capture="environment">
-        </label>
-        <button id="scanBtn" type="button">Scan Fields</button>
-      </div>
-      <p id="scanStatus" class="status">Ready</p>
-    </section>
-
-    <section class="card advanced-only">
-      <h2>2) Confirm Fields</h2>
+    <section class="card">
+      <h2>1) Enter Or Scan Values</h2>
       <div class="field-grid">
-        <label for="releaseInput">Release</label>
-        <input id="releaseInput" type="text" maxlength="40" placeholder="e.g. M22849G">
-
         <label for="partInput">Part Number</label>
-        <textarea id="partInput" rows="3" maxlength="120" placeholder="Long part number will wrap to next line"></textarea>
+        <input id="partInput" type="text" maxlength="120" placeholder="Type part number or scan barcode">
 
+        <label for="jobInput">Job Number</label>
+        <input id="jobInput" type="text" maxlength="40" placeholder="Type job number or scan barcode">
+      </div>
+      <div class="row">
+        <button id="focusPartBtn" type="button">Scan Part Number</button>
+        <button id="focusJobBtn" type="button" class="ghost">Scan Job Number</button>
+      </div>
+      <p class="note">For handheld scanner: click inside a field (or use scan buttons), then scan.</p>
+    </section>
+
+    <section class="card">
+      <h2>2) Select Page Color</h2>
+      <div class="field-grid">
         <span class="field-label">Top Half Color</span>
         <div class="color-picker" role="radiogroup" aria-label="Top Half Color">
           <input id="topColorSky" type="radio" name="topColor" value="#DCEBFF" checked>
@@ -74,7 +65,7 @@
       </div>
     </section>
 
-    <section class="card advanced-only">
+    <section class="card">
       <h2>3) Live Preview</h2>
       <div class="preview-frame">
         <canvas id="previewCanvas" aria-label="Label preview"></canvas>
@@ -82,98 +73,18 @@
       <p class="note">Preview matches A4 landscape layout with fixed bleed margin.</p>
     </section>
 
-    <section class="card actions advanced-only">
+    <section class="card actions">
       <h2>4) Generate PDF</h2>
       <div class="row">
         <button id="pdfBtn" type="button" class="primary">Download A4 Label</button>
         <button id="printBtn" type="button">Print A4 Label</button>
         <button id="clearBtn" type="button" class="ghost">Clear</button>
       </div>
-      <p class="note">No backend. No database. No upload storage. Print uses your browser print dialog.</p>
-    </section>
-
-    <section class="card quick-only is-hidden">
-      <h2>1) Live Barcode Scan</h2>
-      <div class="quick-video-frame">
-        <video id="quickBarcodeVideo" autoplay muted playsinline></video>
-      </div>
-      <div class="row">
-        <button id="startQuickScanBtn" type="button">Start Camera Scan</button>
-        <button id="stopQuickScanBtn" type="button" class="ghost">Stop Scan</button>
-      </div>
-      <p id="quickScanStatus" class="status">Camera idle</p>
-    </section>
-
-    <section class="card quick-only is-hidden">
-      <h2>2) Fallback: Scan From Photo</h2>
-      <div class="row">
-        <label class="file-input">
-          <span>Choose Barcode Image</span>
-          <input id="quickImageInput" type="file" accept="image/*" capture="environment">
-        </label>
-        <button id="quickImageScanBtn" type="button">Scan Photo Barcode</button>
-      </div>
-      <p class="note">If live scan is unavailable, scan from a saved photo or type the part number manually.</p>
-    </section>
-
-    <section class="card quick-only is-hidden">
-      <h2>3) Confirm Fields</h2>
-      <div class="field-grid">
-        <label for="quickPartInput">Part Number (From Barcode)</label>
-        <input id="quickPartInput" type="text" placeholder="Will auto-fill from barcode">
-
-        <label for="quickJobInput">Job Number (Manual)</label>
-        <input id="quickJobInput" type="text" maxlength="40" placeholder="Type job number">
-      </div>
-    </section>
-
-    <section class="card quick-only is-hidden">
-      <h2>4) Select Page Color</h2>
-      <div class="field-grid">
-        <span class="field-label">Top Half Color</span>
-        <div class="color-picker" role="radiogroup" aria-label="Top Half Color">
-          <input id="quickTopColorSky" type="radio" name="quickTopColor" value="#DCEBFF" checked>
-          <label for="quickTopColorSky" class="swatch" style="--swatch:#DCEBFF" title="Sky Blue">
-            <span>Sky Blue</span>
-          </label>
-
-          <input id="quickTopColorMint" type="radio" name="quickTopColor" value="#D9FBE7">
-          <label for="quickTopColorMint" class="swatch" style="--swatch:#D9FBE7" title="Mint">
-            <span>Mint</span>
-          </label>
-
-          <input id="quickTopColorSand" type="radio" name="quickTopColor" value="#FFF1D6">
-          <label for="quickTopColorSand" class="swatch" style="--swatch:#FFF1D6" title="Sand">
-            <span>Sand</span>
-          </label>
-
-          <input id="quickTopColorRose" type="radio" name="quickTopColor" value="#FFE1E6">
-          <label for="quickTopColorRose" class="swatch" style="--swatch:#FFE1E6" title="Rose">
-            <span>Rose</span>
-          </label>
-
-          <input id="quickTopColorGray" type="radio" name="quickTopColor" value="#E5E7EB">
-          <label for="quickTopColorGray" class="swatch" style="--swatch:#E5E7EB" title="Light Gray">
-            <span>Light Gray</span>
-          </label>
-        </div>
-      </div>
-    </section>
-
-    <section class="card actions quick-only is-hidden">
-      <h2>5) Generate PDF</h2>
-      <div class="row">
-        <button id="quickPdfBtn" type="button" class="primary">Download A4 Label</button>
-        <button id="quickPrintBtn" type="button">Print A4 Label</button>
-        <button id="quickClearBtn" type="button" class="ghost">Clear</button>
-      </div>
-      <p class="note">Quick mode: barcode for part number + manual job number + color select + print.</p>
+      <p id="status" class="status">Ready</p>
     </section>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/index.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
   <script src="app.js"></script>
 </body>

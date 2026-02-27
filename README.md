@@ -1,14 +1,12 @@
 ![1772212110799](image/README/1772212110799.png)![1772212115179](image/README/1772212115179.png)# Inventory Label Web App
 
 Static web app for mobile/iPad/desktop to:
-- OCR `RELEASE` and `PART NUMBER` from an inventory ticket image
+- enter or handheld-scan `PART NUMBER` and `JOB NUMBER`
 - generate an A4 landscape PDF label
 - render labels in a warehouse template style (barcode + part/description/meta rows)
 - use a fixed hardcoded bleed margin (not user-editable)
 - choose top-half color from 5 preset options
 - live preview of final A4 layout before export
-- includes a Quick Barcode page: real-time barcode scan for part number + manual job number entry
-- quick fallback: scan barcode from a photo when live camera scan is blocked
 - download PDF or open direct print preview
 - keep data in-browser only (no backend, no database)
 
@@ -25,9 +23,9 @@ Static web app for mobile/iPad/desktop to:
 ## Run locally
 Open `index.html` in a browser, or serve with any static server.
 
-Note for mobile camera scan:
-- Live camera scanning requires `https://` (or `http://localhost` during local testing).
-- If live scan is unsupported, use Quick mode "Scan Photo Barcode" or type part number manually.
+Handheld scanner use:
+- Click in `Part Number` or `Job Number` input first, then scan.
+- Most USB/Bluetooth scanners behave like keyboard input in these fields.
 
 ## Publish on GitHub Pages
 1. Create a new GitHub repo.
@@ -42,6 +40,6 @@ Note for mobile camera scan:
 - No app backend.
 - No database.
 - No user data is intentionally stored by the app.
-- OCR and PDF generation run in the browser.
+- Barcode rendering and PDF generation run in the browser.
 
 Note: Browser/CDN caching can still cache static assets like JS libraries.

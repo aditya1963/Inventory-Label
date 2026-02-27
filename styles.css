@@ -24,10 +24,31 @@ body {
 }
 
 .app-shell {
-  width: min(920px, 94vw);
-  margin: 20px auto 36px;
+  width: min(1500px, 96vw);
+  margin: 14px auto 18px;
   display: grid;
   gap: 14px;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.95fr) minmax(560px, 1.35fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.controls-column {
+  display: grid;
+  gap: 14px;
+}
+
+.preview-column {
+  min-width: 0;
+}
+
+.preview-card {
+  position: sticky;
+  top: 12px;
 }
 
 .hero {
@@ -35,6 +56,23 @@ body {
   border-radius: 18px;
   padding: 20px;
   box-shadow: 0 14px 30px rgba(2, 6, 23, 0.3);
+}
+
+.hero-layout {
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.hero-copy {
+  min-width: 240px;
+}
+
+.hero-actions {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
 }
 
 .hero h1 {
@@ -62,26 +100,6 @@ body {
   font-family: "Oswald", sans-serif;
   letter-spacing: 0.03em;
   font-size: 1.25rem;
-}
-
-.is-hidden {
-  display: none !important;
-}
-
-.mode-tabs {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.mode-btn {
-  background: #e2e8f0;
-  color: #0f172a;
-}
-
-.mode-btn.active {
-  background: #0f172a;
-  color: #fff;
 }
 
 .row {
@@ -134,16 +152,6 @@ button.ghost {
   color: #0f172a;
 }
 
-#scanBtn {
-  background: #0f172a;
-  color: #fff;
-}
-
-#startQuickScanBtn {
-  background: #0f172a;
-  color: #fff;
-}
-
 #printBtn {
   background: #16a34a;
   color: #fff;
@@ -153,19 +161,14 @@ button.ghost {
   background: #15803d;
 }
 
-#quickPrintBtn {
-  background: #16a34a;
-  color: #fff;
-}
-
-#quickPrintBtn:hover {
-  background: #15803d;
-}
-
 .status {
   margin: 10px 0 0;
   color: var(--muted);
   font-weight: 600;
+}
+
+.hero-actions .status {
+  margin: 0;
 }
 
 .field-grid {
@@ -261,8 +264,8 @@ textarea {
 }
 
 .preview-frame {
-  width: min(100%, 700px);
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
   border: 1px solid #cbd5e1;
   border-radius: 12px;
   overflow: hidden;
@@ -276,20 +279,23 @@ textarea {
   background: #fff;
 }
 
-.quick-video-frame {
-  width: min(100%, 700px);
-  margin: 0 auto;
-  border: 1px solid #cbd5e1;
-  border-radius: 12px;
-  overflow: hidden;
-  background: #0b1324;
-}
+@media (max-width: 1180px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
 
-#quickBarcodeVideo {
-  display: block;
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
+  .preview-card {
+    position: static;
+  }
+
+  .hero-layout {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hero-actions {
+    justify-items: start;
+  }
 }
 
 @media (max-width: 640px) {
@@ -308,5 +314,9 @@ textarea {
   .file-input {
     width: 100%;
     justify-content: center;
+  }
+
+  .row {
+    gap: 8px;
   }
 }

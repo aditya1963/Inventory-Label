@@ -12,80 +12,87 @@
 <body>
   <main class="app-shell">
     <section class="hero">
-      <h1>Inventory Label Maker</h1>
-      <p>Enter or scan part/job values, choose color, then print.</p>
-    </section>
-
-    <section class="card">
-      <h2>1) Enter Or Scan Values</h2>
-      <div class="field-grid">
-        <label for="partInput">Part Number</label>
-        <input id="partInput" type="text" maxlength="120" placeholder="Type part number or scan barcode">
-
-        <label for="jobInput">Job Number</label>
-        <input id="jobInput" type="text" maxlength="40" placeholder="Type job number or scan barcode">
-      </div>
-      <div class="row">
-        <button id="focusPartBtn" type="button">Scan Part Number</button>
-        <button id="focusJobBtn" type="button" class="ghost">Scan Job Number</button>
-      </div>
-      <p class="note">For handheld scanner: click inside a field (or use scan buttons), then scan.</p>
-    </section>
-
-    <section class="card">
-      <h2>2) Select Page Color</h2>
-      <div class="field-grid">
-        <span class="field-label">Top Half Color</span>
-        <div class="color-picker" role="radiogroup" aria-label="Top Half Color">
-          <input id="topColorSky" type="radio" name="topColor" value="#DCEBFF" checked>
-          <label for="topColorSky" class="swatch" style="--swatch:#DCEBFF" title="Sky Blue">
-            <span>Sky Blue</span>
-          </label>
-
-          <input id="topColorMint" type="radio" name="topColor" value="#D9FBE7">
-          <label for="topColorMint" class="swatch" style="--swatch:#D9FBE7" title="Mint">
-            <span>Mint</span>
-          </label>
-
-          <input id="topColorSand" type="radio" name="topColor" value="#FFF1D6">
-          <label for="topColorSand" class="swatch" style="--swatch:#FFF1D6" title="Sand">
-            <span>Sand</span>
-          </label>
-
-          <input id="topColorRose" type="radio" name="topColor" value="#FFE1E6">
-          <label for="topColorRose" class="swatch" style="--swatch:#FFE1E6" title="Rose">
-            <span>Rose</span>
-          </label>
-
-          <input id="topColorGray" type="radio" name="topColor" value="#E5E7EB">
-          <label for="topColorGray" class="swatch" style="--swatch:#E5E7EB" title="Light Gray">
-            <span>Light Gray</span>
-          </label>
+      <div class="hero-layout">
+        <div class="hero-copy">
+          <h1>Inventory Label Maker</h1>
+          <p>Enter or scan part/job values, choose color, then print.</p>
+        </div>
+        <div class="hero-actions">
+          <div class="row">
+            <button id="pdfBtn" type="button" class="primary">Download A4 Label</button>
+            <button id="printBtn" type="button">Print A4 Label</button>
+            <button id="clearBtn" type="button" class="ghost">Clear</button>
+          </div>
+          <p id="status" class="status">Ready</p>
         </div>
       </div>
     </section>
 
-    <section class="card">
-      <h2>3) Live Preview</h2>
-      <div class="preview-frame">
-        <canvas id="previewCanvas" aria-label="Label preview"></canvas>
-      </div>
-      <p class="note">Preview matches A4 landscape layout with fixed bleed margin.</p>
-    </section>
+    <section class="workspace">
+      <div class="controls-column">
+        <section class="card">
+          <h2>1) Enter Or Scan Values</h2>
+          <div class="field-grid">
+            <label for="partInput">Part Number</label>
+            <input id="partInput" type="text" maxlength="120" placeholder="Type part number or scan">
 
-    <section class="card actions">
-      <h2>4) Generate PDF</h2>
-      <div class="row">
-        <button id="pdfBtn" type="button" class="primary">Download A4 Label</button>
-        <button id="printBtn" type="button">Print A4 Label</button>
-        <button id="clearBtn" type="button" class="ghost">Clear</button>
+            <label for="jobInput">Job Number</label>
+            <input id="jobInput" type="text" maxlength="40" placeholder="Type job number or scan">
+          </div>
+          <div class="row">
+            <button id="focusPartBtn" type="button">Scan Part Number</button>
+            <button id="focusJobBtn" type="button" class="ghost">Scan Job Number</button>
+          </div>
+          <p class="note">For handheld scanner: click inside a field (or use scan buttons), then scan.</p>
+        </section>
+
+        <section class="card">
+          <h2>2) Select Page Color</h2>
+          <div class="field-grid">
+            <span class="field-label">Top Half Color</span>
+            <div class="color-picker" role="radiogroup" aria-label="Top Half Color">
+              <input id="topColorSky" type="radio" name="topColor" value="#DCEBFF" checked>
+              <label for="topColorSky" class="swatch" style="--swatch:#DCEBFF" title="Sky Blue">
+                <span>Sky Blue</span>
+              </label>
+
+              <input id="topColorMint" type="radio" name="topColor" value="#D9FBE7">
+              <label for="topColorMint" class="swatch" style="--swatch:#D9FBE7" title="Mint">
+                <span>Mint</span>
+              </label>
+
+              <input id="topColorSand" type="radio" name="topColor" value="#FFF1D6">
+              <label for="topColorSand" class="swatch" style="--swatch:#FFF1D6" title="Sand">
+                <span>Sand</span>
+              </label>
+
+              <input id="topColorRose" type="radio" name="topColor" value="#FFE1E6">
+              <label for="topColorRose" class="swatch" style="--swatch:#FFE1E6" title="Rose">
+                <span>Rose</span>
+              </label>
+
+              <input id="topColorGray" type="radio" name="topColor" value="#E5E7EB">
+              <label for="topColorGray" class="swatch" style="--swatch:#E5E7EB" title="Light Gray">
+                <span>Light Gray</span>
+              </label>
+            </div>
+          </div>
+        </section>
       </div>
-      <p id="status" class="status">Ready</p>
+
+      <div class="preview-column">
+        <section class="card preview-card">
+          <h2>3) Live Preview</h2>
+          <div class="preview-frame">
+            <canvas id="previewCanvas" aria-label="Label preview"></canvas>
+          </div>
+          <p class="note">Preview matches A4 landscape layout with fixed bleed margin.</p>
+        </section>
+      </div>
     </section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

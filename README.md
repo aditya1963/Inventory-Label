@@ -3,7 +3,7 @@
 Static web app for mobile/iPad/desktop to:
 - enter or handheld-scan `PART NUMBER` and `JOB NUMBER`
 - generate an A4 landscape PDF label
-- render labels in a warehouse template style (barcode + part/description/meta rows)
+- render labels in a two-half layout: `JOB NUMBER` on top, `PART NUMBER` on bottom
 - use a fixed hardcoded bleed margin (not user-editable)
 - choose top-half color from 5 preset options
 - live preview of final A4 layout before export
@@ -40,6 +40,6 @@ Handheld scanner use:
 - No app backend.
 - No database.
 - No user data is intentionally stored by the app.
-- Barcode rendering and PDF generation run in the browser.
+- PDF generation runs in the browser.
 
 Note: Browser/CDN caching can still cache static assets like JS libraries.

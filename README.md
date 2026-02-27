@@ -3,10 +3,12 @@
 Static web app for mobile/iPad/desktop to:
 - OCR `RELEASE` and `PART NUMBER` from an inventory ticket image
 - generate an A4 landscape PDF label
+- render labels in a warehouse template style (barcode + part/description/meta rows)
 - use a fixed hardcoded bleed margin (not user-editable)
 - choose top-half color from 5 preset options
 - live preview of final A4 layout before export
-- includes a Quick Barcode page: real-time barcode scan for part number + manual release entry
+- includes a Quick Barcode page: real-time barcode scan for part number + manual job number entry
+- quick fallback: scan barcode from a photo when live camera scan is blocked
 - download PDF or open direct print preview
 - keep data in-browser only (no backend, no database)
 
@@ -22,6 +24,10 @@ Static web app for mobile/iPad/desktop to:
 
 ## Run locally
 Open `index.html` in a browser, or serve with any static server.
+
+Note for mobile camera scan:
+- Live camera scanning requires `https://` (or `http://localhost` during local testing).
+- If live scan is unsupported, use Quick mode "Scan Photo Barcode" or type part number manually.
 
 ## Publish on GitHub Pages
 1. Create a new GitHub repo.

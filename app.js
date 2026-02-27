@@ -15,8 +15,11 @@
   const clearBtn = document.getElementById("clearBtn");
   const scanStatus = document.getElementById("scanStatus");
   const quickBarcodeVideo = document.getElementById("quickBarcodeVideo");
+  const quickImageInput = document.getElementById("quickImageInput");
+  const quickImageScanBtn = document.getElementById("quickImageScanBtn");
   const quickPartInput = document.getElementById("quickPartInput");
-  const quickReleaseInput = document.getElementById("quickReleaseInput");
+  const quickJobInput = document.getElementById("quickJobInput");
+  const quickTopColorInputs = document.querySelectorAll('input[name="quickTopColor"]');
   const quickScanStatus = document.getElementById("quickScanStatus");
   const startQuickScanBtn = document.getElementById("startQuickScanBtn");
   const stopQuickScanBtn = document.getElementById("stopQuickScanBtn");
@@ -29,7 +32,6 @@
   const JOB_RE = /JOB\s*NUMBER\s*[:#]?\s*([A-Z0-9_\/-]+)/i;
   const A4_LANDSCAPE_PT = { width: 841.89, height: 595.28 };
   const FIXED_BLEED_MM = 10;
-  const PART_WRAP_THRESHOLD = 18;
   const RELEASE_MIN_LEN = 4;
   const RELEASE_MAX_LEN = 14;
   let currentMode = "advanced";
@@ -52,6 +54,9 @@
   startQuickScanBtn.addEventListener("click", () => {
     void startQuickBarcodeScan();
   });
+  quickImageScanBtn.addEventListener("click", () => {
+    void scanQuickBarcodeFromPhoto();
+  });
   stopQuickScanBtn.addEventListener("click", stopQuickBarcodeScan);
   quickPdfBtn.addEventListener("click", downloadQuickPdf);
   quickPrintBtn.addEventListener("click", () => {
@@ -61,6 +66,9 @@
   releaseInput.addEventListener("input", renderPreview);
   partInput.addEventListener("input", renderPreview);
   topColorInputs.forEach((input) => {
+    input.addEventListener("change", renderPreview);
+  });
+  quickTopColorInputs.forEach((input) => {
     input.addEventListener("change", renderPreview);
   });
   window.addEventListener("resize", renderPreview);
@@ -116,6 +124,52 @@
 
   function isZxingAvailable() {
     return !!(window.ZXingBrowser && window.ZXingBrowser.BrowserMultiFormatReader);
+  }
+
+  function isLocalhostHost(host) {
+    return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+  }
+
+  function isCameraContextAllowed() {
+    if (window.isSecureContext) {
+      return true;
+    }
+    const host = window.location && window.location.hostname ? window.location.hostname : "";
+    const protocol = window.location && window.location.protocol ? window.location.protocol : "";
+    return protocol === "http:" && isLocalhostHost(host);
+  }
+
+  function getLiveScanBlockerReason() {
+    if (!isCameraContextAllowed()) {
+      return "Live camera scan requires HTTPS (or localhost over HTTP).";
+    }
+    if (!navigator.mediaDevices) {
+      return "This browser does not provide media devices.";
+    }
+    if (typeof navigator.mediaDevices.getUserMedia !== "function") {
+      return "This browser does not support camera access (getUserMedia).";
+    }
+    if (!isNativeBarcodeAvailable() && !isZxingAvailable()) {
+      return "No barcode engine is available in this browser.";
+    }
+    return "";
+  }
+
+  function describeCameraError(err) {
+    const errorName = err && err.name ? err.name : "";
+    if (errorName === "NotAllowedError" || errorName === "SecurityError") {
+      return "Camera permission denied. Allow camera access in browser settings.";
+    }
+    if (errorName === "NotFoundError" || errorName === "DevicesNotFoundError") {
+      return "No camera device was found on this phone/tablet.";
+    }
+    if (errorName === "NotReadableError" || errorName === "TrackStartError") {
+      return "Camera is busy in another app. Close it and try again.";
+    }
+    if (errorName === "OverconstrainedError" || errorName === "ConstraintNotSatisfiedError") {
+      return "Camera constraints are not supported on this device.";
+    }
+    return "Unable to access camera. Check permissions.";
   }
 
   async function scanImage() {
@@ -182,7 +236,15 @@
   }
 
   async function detectBarcodePartNumber(file) {
-    if (!("BarcodeDetector" in window)) {
+    const nativeValue = await detectBarcodePartWithNativeDetector(file);
+    if (nativeValue) {
+      return nativeValue;
+    }
+    return await detectBarcodePartWithZXing(file);
+  }
+
+  async function detectBarcodePartWithNativeDetector(file) {
+    if (!isNativeBarcodeAvailable()) {
       return "";
     }
     try {
@@ -221,6 +283,109 @@
     } catch (_err) {
       return "";
     }
+  }
+
+  async function detectBarcodePartWithZXing(file) {
+    const reader = createZXingReader();
+    if (!reader) {
+      return "";
+    }
+
+    const image = await loadImageFromFile(file);
+    const valueFromImageElement = await tryDecodePartWithZXingReader(reader, image);
+    if (valueFromImageElement) {
+      return valueFromImageElement;
+    }
+
+    const canvas = document.createElement("canvas");
+    const width = image.naturalWidth || image.width || 0;
+    const height = image.naturalHeight || image.height || 0;
+    if (width > 0 && height > 0) {
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(image, 0, 0, width, height);
+        const valueFromCanvas = await tryDecodePartWithZXingReader(reader, canvas);
+        if (valueFromCanvas) {
+          return valueFromCanvas;
+        }
+      }
+    }
+
+    let objectUrl = "";
+    try {
+      objectUrl = URL.createObjectURL(file);
+      return await tryDecodePartWithZXingReader(reader, objectUrl);
+    } catch (_err) {
+      return "";
+    } finally {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    }
+  }
+
+  async function tryDecodePartWithZXingReader(reader, source) {
+    const methodCandidates = [
+      "decodeFromImageElement",
+      "decodeOnceFromImageElement",
+      "decodeFromCanvas",
+      "decodeFromImageUrl",
+      "decodeOnceFromImageUrl"
+    ];
+
+    for (let i = 0; i < methodCandidates.length; i += 1) {
+      const methodName = methodCandidates[i];
+      if (typeof reader[methodName] !== "function") {
+        continue;
+      }
+      try {
+        let result = null;
+        if (methodName === "decodeFromImageElement" || methodName === "decodeOnceFromImageElement") {
+          if (!(source instanceof HTMLImageElement)) {
+            continue;
+          }
+          result = await reader[methodName](source);
+        } else if (methodName === "decodeFromCanvas") {
+          if (!(source instanceof HTMLCanvasElement)) {
+            continue;
+          }
+          result = await reader[methodName](source);
+        } else if (methodName === "decodeFromImageUrl" || methodName === "decodeOnceFromImageUrl") {
+          if (typeof source !== "string") {
+            continue;
+          }
+          result = await reader[methodName](source);
+        } else {
+          continue;
+        }
+        const raw = extractZxingResultText(result);
+        const cleaned = cleanCandidate(raw, { minLen: 4, maxLen: 80 });
+        if (isLikelyPartToken(cleaned)) {
+          return cleaned;
+        }
+      } catch (_err) {
+        // Try next decoder method.
+      }
+    }
+    return "";
+  }
+
+  function extractZxingResultText(result) {
+    if (!result) {
+      return "";
+    }
+    if (typeof result.getText === "function") {
+      return String(result.getText());
+    }
+    if (typeof result.text === "string") {
+      return result.text;
+    }
+    if (typeof result.rawValue === "string") {
+      return result.rawValue;
+    }
+    return String(result);
   }
 
   async function createBarcodeDetector() {
@@ -396,17 +561,17 @@
     if (currentMode !== "quick") {
       setMode("quick");
     }
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setQuickStatus("Camera not supported in this browser.");
+    const blockerReason = getLiveScanBlockerReason();
+    if (blockerReason) {
+      if (blockerReason.includes("No barcode engine")) {
+        setQuickStatus(`${blockerReason} Type part number manually.`);
+      } else {
+        setQuickStatus(`${blockerReason} Use "Scan Photo Barcode" or type part number manually.`);
+      }
       return;
     }
     if (quickScanStream || quickZxingControls) {
       setQuickStatus("Scanning already running...");
-      return;
-    }
-
-    if (!isNativeBarcodeAvailable() && !isZxingAvailable()) {
-      setQuickStatus("Barcode scanning not supported on this browser.");
       return;
     }
 
@@ -442,9 +607,38 @@
       quickScanTimer = window.setInterval(() => {
         void runQuickBarcodeTick();
       }, 220);
+    } catch (err) {
+      const detail = describeCameraError(err);
+      setQuickStatus(`${detail} You can still use "Scan Photo Barcode".`);
+      stopQuickBarcodeScan(true);
+    }
+  }
+
+  async function scanQuickBarcodeFromPhoto() {
+    const file = quickImageInput.files && quickImageInput.files[0];
+    if (!file) {
+      setQuickStatus("Choose a barcode image first.");
+      return;
+    }
+
+    try {
+      quickImageScanBtn.disabled = true;
+      if (!isNativeBarcodeAvailable() && !isZxingAvailable()) {
+        setQuickStatus("No barcode engine is available in this browser. Type part number manually.");
+        return;
+      }
+      setQuickStatus("Scanning barcode from selected image...");
+      const partNumber = await detectBarcodePartNumber(file);
+      if (partNumber) {
+        quickPartInput.value = partNumber;
+        setQuickStatus(`Detected part: ${partNumber}`);
+      } else {
+        setQuickStatus("No barcode found in this photo. Type part number manually.");
+      }
     } catch (_err) {
-      setQuickStatus("Unable to access camera. Check permissions.");
-      stopQuickBarcodeScan();
+      setQuickStatus("Photo scan failed. Try another image or type part number manually.");
+    } finally {
+      quickImageScanBtn.disabled = false;
     }
   }
 
@@ -508,7 +702,7 @@
     }
   }
 
-  function stopQuickBarcodeScan() {
+  function stopQuickBarcodeScan(suppressStatusMessage) {
     if (quickScanTimer) {
       window.clearInterval(quickScanTimer);
       quickScanTimer = null;
@@ -526,7 +720,7 @@
     if (quickBarcodeVideo && quickBarcodeVideo.srcObject) {
       quickBarcodeVideo.srcObject = null;
     }
-    if (currentMode === "quick") {
+    if (!suppressStatusMessage && currentMode === "quick") {
       setQuickStatus("Camera stopped.");
     }
   }
@@ -957,7 +1151,9 @@
 
   function parseTopColor() {
     const allowed = new Set(["#DCEBFF", "#D9FBE7", "#FFF1D6", "#FFE1E6", "#E5E7EB"]);
-    const selected = document.querySelector('input[name="topColor"]:checked');
+    const selected = currentMode === "quick"
+      ? document.querySelector('input[name="quickTopColor"]:checked')
+      : document.querySelector('input[name="topColor"]:checked');
     const value = selected && selected.value ? selected.value.toUpperCase() : "";
     if (allowed.has(value)) {
       return value;
@@ -977,42 +1173,36 @@
     };
   }
 
-  function getLayout(pageWidth, pageHeight) {
+  function getTemplateLayout(pageWidth, pageHeight) {
     const bleedPt = mmToPt(FIXED_BLEED_MM);
-    const contentX = bleedPt;
-    const contentY = bleedPt;
-    const contentWidth = Math.max(100, pageWidth - (bleedPt * 2));
-    const contentHeight = Math.max(100, pageHeight - (bleedPt * 2));
-    const topRatio = 0.35;
-    const topSectionHeight = contentHeight * topRatio;
-    const bottomSectionHeight = contentHeight - topSectionHeight;
-    const dividerY = contentY + topSectionHeight;
-    const marginX = Math.max(24, contentWidth * 0.03);
-    const sectionTop = 16;
-    const sectionBottom = 16;
-    const titleGap = 8;
-    const releaseTitleSize = 21;
-    const partTitleSize = 42;
-    const usableWidth = contentWidth - (marginX * 2);
-    const releaseValueMaxHeight =
-      topSectionHeight - sectionTop - sectionBottom - textHeight(releaseTitleSize) - titleGap;
-    const partValueMaxHeight =
-      bottomSectionHeight - sectionTop - sectionBottom - textHeight(partTitleSize) - titleGap;
+    const panelX = bleedPt;
+    const panelY = bleedPt;
+    const panelWidth = Math.max(300, pageWidth - (bleedPt * 2));
+    const panelHeight = Math.max(220, pageHeight - (bleedPt * 2));
+    const innerPad = Math.max(18, panelWidth * 0.04);
+    const barcodeX = panelX + innerPad;
+    const barcodeY = panelY + Math.max(18, panelHeight * 0.045);
+    const barcodeWidth = panelWidth - (innerPad * 2);
+    const barcodeHeight = Math.max(36, Math.min(70, panelHeight * 0.12));
+    const textX = panelX + innerPad;
+    const rightMetaX = panelX + (panelWidth * 0.5);
+    const textStartY = barcodeY + barcodeHeight + Math.max(16, panelHeight * 0.035);
+    const textUsableWidth = panelWidth - (innerPad * 2);
 
     return {
-      contentX,
-      contentY,
-      contentWidth,
-      topSectionHeight,
-      dividerY,
-      marginX,
-      sectionTop,
-      titleGap,
-      releaseTitleSize,
-      partTitleSize,
-      usableWidth,
-      releaseValueMaxHeight,
-      partValueMaxHeight
+      panelX,
+      panelY,
+      panelWidth,
+      panelHeight,
+      innerPad,
+      barcodeX,
+      barcodeY,
+      barcodeWidth,
+      barcodeHeight,
+      textX,
+      rightMetaX,
+      textStartY,
+      textUsableWidth
     };
   }
 
@@ -1028,7 +1218,105 @@
     return { release, partNumber };
   }
 
-  function buildPdfDocument(release, partNumber, topColorHex) {
+  function formatDateShort(dateValue) {
+    const d = dateValue instanceof Date ? dateValue : new Date();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const yyyy = String(d.getFullYear());
+    return `${mm}/${dd}/${yyyy}`;
+  }
+
+  function sanitizeBarcodeValue(value) {
+    const cleaned = (value || "")
+      .replace(/[^\x20-\x7E]/g, "")
+      .trim();
+    return cleaned || "PART0001";
+  }
+
+  function buildBarcodeCanvas(value, preferredWidth, preferredHeight) {
+    if (typeof window.JsBarcode !== "function") {
+      return null;
+    }
+    const canvas = document.createElement("canvas");
+    try {
+      window.JsBarcode(canvas, sanitizeBarcodeValue(value), {
+        format: "CODE128",
+        margin: 0,
+        displayValue: false,
+        width: 2,
+        height: Math.max(24, Math.floor(preferredHeight || 48))
+      });
+      if (preferredWidth && canvas.width < preferredWidth) {
+        const scaled = document.createElement("canvas");
+        scaled.width = preferredWidth;
+        scaled.height = canvas.height;
+        const sctx = scaled.getContext("2d");
+        if (sctx) {
+          sctx.fillStyle = "#ffffff";
+          sctx.fillRect(0, 0, scaled.width, scaled.height);
+          sctx.drawImage(canvas, 0, 0, scaled.width, scaled.height);
+          return scaled;
+        }
+      }
+      return canvas;
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function drawFallbackBarcodeOnPdf(doc, x, y, w, h, value) {
+    const token = sanitizeBarcodeValue(value);
+    const unit = Math.max(1, w / 260);
+    let cursor = x;
+    let idx = 0;
+    doc.setFillColor(255, 255, 255);
+    doc.rect(x, y, w, h, "F");
+    while (cursor < x + w) {
+      const code = token.charCodeAt(idx % token.length);
+      const barW = Math.max(unit, ((code % 4) + 1) * unit);
+      doc.setFillColor(0, 0, 0);
+      doc.rect(cursor, y, Math.min(barW, (x + w) - cursor), h, "F");
+      cursor += barW + (((code % 3) + 1) * unit);
+      idx += 1;
+    }
+  }
+
+  function drawFallbackBarcodeOnCanvas(ctx, x, y, w, h, value) {
+    const token = sanitizeBarcodeValue(value);
+    const unit = Math.max(1, w / 260);
+    let cursor = x;
+    let idx = 0;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(x, y, w, h);
+    while (cursor < x + w) {
+      const code = token.charCodeAt(idx % token.length);
+      const barW = Math.max(unit, ((code % 4) + 1) * unit);
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(cursor, y, Math.min(barW, (x + w) - cursor), h);
+      cursor += barW + (((code % 3) + 1) * unit);
+      idx += 1;
+    }
+  }
+
+  function buildTemplateValues(release, partNumber, topLabel, usePlaceholders) {
+    const cleanPart = normalizeValue(partNumber || "");
+    const cleanTop = normalizeValue(release || "");
+    const hasValues = Boolean(cleanPart || cleanTop);
+
+    return {
+      partNumber: cleanPart || (usePlaceholders ? "FABRICATED PART" : ""),
+      description: "FABRICATED PARTS",
+      poNumber: usePlaceholders && !hasValues ? "74890" : "",
+      qtyReceived: "1.00",
+      dateReceived: formatDateShort(new Date()),
+      by: usePlaceholders && !hasValues ? "AS" : "",
+      topLabel: topLabel || "RELEASE",
+      topValue: cleanTop || (usePlaceholders ? "M22849G" : ""),
+      releaseWo: "/"
+    };
+  }
+
+  function buildPdfDocument(release, partNumber, topColorHex, topLabel) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({
       orientation: "landscape",
@@ -1038,70 +1326,101 @@
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const layout = getLayout(pageWidth, pageHeight);
+    const layout = getTemplateLayout(pageWidth, pageHeight);
+    const values = buildTemplateValues(release, partNumber, topLabel, false);
 
-    const topRgb = hexToRgb(topColorHex);
-    doc.setFillColor(topRgb.r, topRgb.g, topRgb.b);
-    doc.rect(layout.contentX, layout.contentY, layout.contentWidth, layout.topSectionHeight, "F");
+    const panelRgb = hexToRgb(topColorHex);
+    doc.setFillColor(panelRgb.r, panelRgb.g, panelRgb.b);
+    doc.rect(layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, "F");
 
     doc.setDrawColor(0, 0, 0);
-    doc.setLineWidth(2.5);
-    doc.line(layout.contentX, layout.dividerY, layout.contentX + layout.contentWidth, layout.dividerY);
+    doc.setLineWidth(2);
+    doc.rect(layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, "S");
 
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
 
-    const releaseX = layout.contentX + layout.marginX;
-    const releaseTop = layout.contentY + layout.sectionTop;
-    doc.setFontSize(layout.releaseTitleSize);
-    doc.text("RELEASE", releaseX, releaseTop, { baseline: "top" });
-    const releaseBlock = fitBlock(doc, release, layout.usableWidth, layout.releaseValueMaxHeight, {
-      maxSize: 105,
+    const barcodeCanvas = buildBarcodeCanvas(values.partNumber, Math.floor(layout.barcodeWidth), Math.floor(layout.barcodeHeight));
+    if (barcodeCanvas) {
+      doc.addImage(barcodeCanvas, "PNG", layout.barcodeX, layout.barcodeY, layout.barcodeWidth, layout.barcodeHeight);
+    } else {
+      drawFallbackBarcodeOnPdf(doc, layout.barcodeX, layout.barcodeY, layout.barcodeWidth, layout.barcodeHeight, values.partNumber);
+    }
+
+    let cursorY = layout.textStartY;
+
+    const partLine = `PART NUMBER: ${values.partNumber || "-"}`;
+    const partBlock = fitBlock(doc, partLine, layout.textUsableWidth, 36, {
+      maxSize: 38,
+      minSize: 16,
+      maxLines: 1,
+      preferWrapped: false
+    });
+    drawLinesFromTop(
+      doc,
+      partBlock.lines,
+      layout.textX,
+      cursorY,
+      partBlock.size,
+      partBlock.lineGap
+    );
+    cursorY += textHeight(partBlock.size) + 8;
+
+    doc.setFont("helvetica", "normal");
+    const descLine = `DESCRIPTION: ${values.description}`;
+    const descBlock = fitBlock(doc, descLine, layout.textUsableWidth, 30, {
+      maxSize: 28,
+      minSize: 12,
+      maxLines: 1,
+      preferWrapped: false
+    });
+    drawLinesFromTop(doc, descBlock.lines, layout.textX, cursorY, descBlock.size, descBlock.lineGap);
+    cursorY += textHeight(descBlock.size) + 16;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(20);
+    doc.text(`PO#: ${values.poNumber}`, layout.textX, cursorY, { baseline: "top" });
+    doc.text(`QTY RECEIVED: ${values.qtyReceived}`, layout.rightMetaX, cursorY, { baseline: "top" });
+    cursorY += textHeight(20) + 3;
+
+    doc.text(`DATE REC: ${values.dateReceived}`, layout.textX, cursorY, { baseline: "top" });
+    doc.text(`BY: ${values.by}`, layout.rightMetaX, cursorY, { baseline: "top" });
+    cursorY += textHeight(20) + 10;
+
+    doc.setFont("helvetica", "bold");
+    const topLine = values.topValue ? `${values.topLabel}: ${values.topValue}` : `${values.topLabel}:`;
+    const topValueBlock = fitBlock(doc, topLine, layout.textUsableWidth, 38, {
+      maxSize: 36,
       minSize: 14,
       maxLines: 1,
       preferWrapped: false
     });
     drawLinesFromTop(
       doc,
-      releaseBlock.lines,
-      releaseX,
-      releaseTop + textHeight(layout.releaseTitleSize) + layout.titleGap,
-      releaseBlock.size,
-      releaseBlock.lineGap
+      topValueBlock.lines,
+      layout.textX,
+      cursorY,
+      topValueBlock.size,
+      topValueBlock.lineGap
     );
+    cursorY += textHeight(topValueBlock.size) + 4;
 
-    const bottomX = layout.contentX + layout.marginX;
-    const bottomTop = layout.dividerY + layout.sectionTop;
-    doc.setFontSize(layout.partTitleSize);
-    doc.text("PART NUMBER", bottomX, bottomTop, { baseline: "top" });
-
-    const preferWrapped = partNumber.length >= PART_WRAP_THRESHOLD;
-    const partBlock = fitBlock(doc, partNumber, layout.usableWidth, layout.partValueMaxHeight, {
-      maxSize: 280,
-      minSize: 20,
-      maxLines: 2,
-      preferWrapped
-    });
-    drawLinesFromTop(
-      doc,
-      partBlock.lines,
-      bottomX,
-      bottomTop + textHeight(layout.partTitleSize) + layout.titleGap,
-      partBlock.size,
-      partBlock.lineGap
-    );
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(20);
+    doc.text(`RELEASE/WO: ${values.releaseWo}`, layout.textX, cursorY, { baseline: "top" });
 
     return doc;
   }
 
-  function setCanvasFont(ctx, sizePt, scale) {
+  function setCanvasFont(ctx, sizePt, scale, fontWeight) {
     const px = Math.max(1, sizePt * scale);
-    ctx.font = `700 ${px}px Arial, sans-serif`;
+    const weight = fontWeight || 700;
+    ctx.font = `${weight} ${px}px Arial, sans-serif`;
   }
 
-  function drawCanvasLinesFromTop(ctx, lines, x, topY, size, lineGap, mapX, mapY, scale) {
+  function drawCanvasLinesFromTop(ctx, lines, x, topY, size, lineGap, mapX, mapY, scale, fontWeight) {
     let y = topY;
-    setCanvasFont(ctx, size, scale);
+    setCanvasFont(ctx, size, scale, fontWeight);
     ctx.textBaseline = "top";
     for (let i = 0; i < lines.length; i += 1) {
       ctx.fillText(lines[i], mapX(x), mapY(y));
@@ -1160,23 +1479,25 @@
     );
 
     const topColor = parseTopColor();
-    const layout = getLayout(A4_LANDSCAPE_PT.width, A4_LANDSCAPE_PT.height);
-    const values = getFieldValuesForLayout(true);
+    const layout = getTemplateLayout(A4_LANDSCAPE_PT.width, A4_LANDSCAPE_PT.height);
+    const values = buildTemplateValues(releaseInput.value, partInput.value, "RELEASE", true);
 
     ctx.fillStyle = topColor;
     ctx.fillRect(
-      mapX(layout.contentX),
-      mapY(layout.contentY),
-      layout.contentWidth * scale,
-      layout.topSectionHeight * scale
+      mapX(layout.panelX),
+      mapY(layout.panelY),
+      layout.panelWidth * scale,
+      layout.panelHeight * scale
     );
 
     ctx.strokeStyle = "#111827";
-    ctx.lineWidth = Math.max(1, 2.5 * scale);
-    ctx.beginPath();
-    ctx.moveTo(mapX(layout.contentX), mapY(layout.dividerY));
-    ctx.lineTo(mapX(layout.contentX + layout.contentWidth), mapY(layout.dividerY));
-    ctx.stroke();
+    ctx.lineWidth = Math.max(1, 2 * scale);
+    ctx.strokeRect(
+      mapX(layout.panelX),
+      mapY(layout.panelY),
+      layout.panelWidth * scale,
+      layout.panelHeight * scale
+    );
 
     const measureApi = {
       setFontSize(size) {
@@ -1189,51 +1510,103 @@
 
     ctx.fillStyle = "#000000";
 
-    const releaseX = layout.contentX + layout.marginX;
-    const releaseTop = layout.contentY + layout.sectionTop;
-    setCanvasFont(ctx, layout.releaseTitleSize, scale);
+    const barcodeCanvas = buildBarcodeCanvas(values.partNumber, Math.floor(layout.barcodeWidth), Math.floor(layout.barcodeHeight));
+    if (barcodeCanvas) {
+      ctx.drawImage(
+        barcodeCanvas,
+        mapX(layout.barcodeX),
+        mapY(layout.barcodeY),
+        layout.barcodeWidth * scale,
+        layout.barcodeHeight * scale
+      );
+    } else {
+      drawFallbackBarcodeOnCanvas(
+        ctx,
+        mapX(layout.barcodeX),
+        mapY(layout.barcodeY),
+        layout.barcodeWidth * scale,
+        layout.barcodeHeight * scale,
+        values.partNumber
+      );
+    }
+
+    let cursorY = layout.textStartY;
+
+    const partLine = `PART NUMBER: ${values.partNumber || "-"}`;
+    const partBlock = fitBlock(measureApi, partLine, layout.textUsableWidth, 36, {
+      maxSize: 38,
+      minSize: 16,
+      maxLines: 1,
+      preferWrapped: false
+    });
+    drawCanvasLinesFromTop(
+      ctx,
+      partBlock.lines,
+      layout.textX,
+      cursorY,
+      partBlock.size,
+      partBlock.lineGap,
+      mapX,
+      mapY,
+      scale,
+      700
+    );
+    cursorY += textHeight(partBlock.size) + 8;
+
+    const descLine = `DESCRIPTION: ${values.description}`;
+    const descBlock = fitBlock(measureApi, descLine, layout.textUsableWidth, 30, {
+      maxSize: 28,
+      minSize: 12,
+      maxLines: 1,
+      preferWrapped: false
+    });
+    drawCanvasLinesFromTop(
+      ctx,
+      descBlock.lines,
+      layout.textX,
+      cursorY,
+      descBlock.size,
+      descBlock.lineGap,
+      mapX,
+      mapY,
+      scale,
+      400
+    );
+    cursorY += textHeight(descBlock.size) + 16;
+
+    setCanvasFont(ctx, 20, scale, 400);
     ctx.textBaseline = "top";
-    ctx.fillText("RELEASE", mapX(releaseX), mapY(releaseTop));
-    const releaseBlock = fitBlock(measureApi, values.release, layout.usableWidth, layout.releaseValueMaxHeight, {
-      maxSize: 105,
+    ctx.fillText(`PO#: ${values.poNumber}`, mapX(layout.textX), mapY(cursorY));
+    ctx.fillText(`QTY RECEIVED: ${values.qtyReceived}`, mapX(layout.rightMetaX), mapY(cursorY));
+    cursorY += textHeight(20) + 3;
+
+    ctx.fillText(`DATE REC: ${values.dateReceived}`, mapX(layout.textX), mapY(cursorY));
+    ctx.fillText(`BY: ${values.by}`, mapX(layout.rightMetaX), mapY(cursorY));
+    cursorY += textHeight(20) + 10;
+
+    const topLine = values.topValue ? `${values.topLabel}: ${values.topValue}` : `${values.topLabel}:`;
+    const topValueBlock = fitBlock(measureApi, topLine, layout.textUsableWidth, 38, {
+      maxSize: 36,
       minSize: 14,
       maxLines: 1,
       preferWrapped: false
     });
     drawCanvasLinesFromTop(
       ctx,
-      releaseBlock.lines,
-      releaseX,
-      releaseTop + textHeight(layout.releaseTitleSize) + layout.titleGap,
-      releaseBlock.size,
-      releaseBlock.lineGap,
+      topValueBlock.lines,
+      layout.textX,
+      cursorY,
+      topValueBlock.size,
+      topValueBlock.lineGap,
       mapX,
       mapY,
-      scale
+      scale,
+      700
     );
+    cursorY += textHeight(topValueBlock.size) + 4;
 
-    const bottomX = layout.contentX + layout.marginX;
-    const bottomTop = layout.dividerY + layout.sectionTop;
-    setCanvasFont(ctx, layout.partTitleSize, scale);
-    ctx.fillText("PART NUMBER", mapX(bottomX), mapY(bottomTop));
-    const preferWrapped = values.partNumber.length >= PART_WRAP_THRESHOLD;
-    const partBlock = fitBlock(measureApi, values.partNumber, layout.usableWidth, layout.partValueMaxHeight, {
-      maxSize: 280,
-      minSize: 20,
-      maxLines: 2,
-      preferWrapped
-    });
-    drawCanvasLinesFromTop(
-      ctx,
-      partBlock.lines,
-      bottomX,
-      bottomTop + textHeight(layout.partTitleSize) + layout.titleGap,
-      partBlock.size,
-      partBlock.lineGap,
-      mapX,
-      mapY,
-      scale
-    );
+    setCanvasFont(ctx, 20, scale, 400);
+    ctx.fillText(`RELEASE/WO: ${values.releaseWo}`, mapX(layout.textX), mapY(cursorY));
   }
 
   function getValidatedFields() {
@@ -1247,14 +1620,14 @@
       return null;
     }
     const topColor = parseTopColor();
-    return { ...values, topColor };
+    return { ...values, topColor, topLabel: "RELEASE" };
   }
 
   function getQuickValidatedFields() {
     const partNumber = normalizeValue(quickPartInput.value);
-    const release = normalizeValue(quickReleaseInput.value);
-    if (!partNumber || !release) {
-      setQuickStatus("Part Number and Release are required.");
+    const jobNumber = normalizeValue(quickJobInput.value);
+    if (!partNumber || !jobNumber) {
+      setQuickStatus("Part Number and Job Number are required.");
       return null;
     }
     if (!window.jspdf || !window.jspdf.jsPDF) {
@@ -1262,7 +1635,7 @@
       return null;
     }
     const topColor = parseTopColor();
-    return { partNumber, release, topColor };
+    return { partNumber, release: jobNumber, topColor, topLabel: "JOB NUMBER" };
   }
 
   function downloadPdf() {
@@ -1308,7 +1681,7 @@
   }
 
   function runDownloadExport(fields, statusSetter) {
-    const doc = buildPdfDocument(fields.release, fields.partNumber, fields.topColor);
+    const doc = buildPdfDocument(fields.release, fields.partNumber, fields.topColor, fields.topLabel);
     const fileName = buildOutputFileName(fields.release);
     doc.save(fileName);
     statusSetter("PDF downloaded (A4 landscape, fixed bleed).");
@@ -1335,7 +1708,7 @@
 
     // Open tab first to reduce popup blocking on mobile browsers.
     const printWindow = window.open("", "_blank");
-    const doc = buildPdfDocument(fields.release, fields.partNumber, fields.topColor);
+    const doc = buildPdfDocument(fields.release, fields.partNumber, fields.topColor, fields.topLabel);
     if (typeof doc.autoPrint === "function") {
       doc.autoPrint();
     }
@@ -1377,8 +1750,15 @@
   }
 
   function clearQuickForm() {
+    if (quickImageInput) {
+      quickImageInput.value = "";
+    }
     quickPartInput.value = "";
-    quickReleaseInput.value = "";
+    quickJobInput.value = "";
+    const defaultQuickSwatch = document.querySelector('input[name="quickTopColor"][value="#DCEBFF"]');
+    if (defaultQuickSwatch) {
+      defaultQuickSwatch.checked = true;
+    }
     setQuickStatus("Cleared.");
   }
 

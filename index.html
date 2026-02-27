@@ -105,30 +105,76 @@
     </section>
 
     <section class="card quick-only is-hidden">
-      <h2>2) Confirm Fields</h2>
+      <h2>2) Fallback: Scan From Photo</h2>
+      <div class="row">
+        <label class="file-input">
+          <span>Choose Barcode Image</span>
+          <input id="quickImageInput" type="file" accept="image/*" capture="environment">
+        </label>
+        <button id="quickImageScanBtn" type="button">Scan Photo Barcode</button>
+      </div>
+      <p class="note">If live scan is unavailable, scan from a saved photo or type the part number manually.</p>
+    </section>
+
+    <section class="card quick-only is-hidden">
+      <h2>3) Confirm Fields</h2>
       <div class="field-grid">
         <label for="quickPartInput">Part Number (From Barcode)</label>
         <input id="quickPartInput" type="text" placeholder="Will auto-fill from barcode">
 
-        <label for="quickReleaseInput">Release (Manual)</label>
-        <input id="quickReleaseInput" type="text" maxlength="40" placeholder="e.g. M22849G">
+        <label for="quickJobInput">Job Number (Manual)</label>
+        <input id="quickJobInput" type="text" maxlength="40" placeholder="Type job number">
+      </div>
+    </section>
+
+    <section class="card quick-only is-hidden">
+      <h2>4) Select Page Color</h2>
+      <div class="field-grid">
+        <span class="field-label">Top Half Color</span>
+        <div class="color-picker" role="radiogroup" aria-label="Top Half Color">
+          <input id="quickTopColorSky" type="radio" name="quickTopColor" value="#DCEBFF" checked>
+          <label for="quickTopColorSky" class="swatch" style="--swatch:#DCEBFF" title="Sky Blue">
+            <span>Sky Blue</span>
+          </label>
+
+          <input id="quickTopColorMint" type="radio" name="quickTopColor" value="#D9FBE7">
+          <label for="quickTopColorMint" class="swatch" style="--swatch:#D9FBE7" title="Mint">
+            <span>Mint</span>
+          </label>
+
+          <input id="quickTopColorSand" type="radio" name="quickTopColor" value="#FFF1D6">
+          <label for="quickTopColorSand" class="swatch" style="--swatch:#FFF1D6" title="Sand">
+            <span>Sand</span>
+          </label>
+
+          <input id="quickTopColorRose" type="radio" name="quickTopColor" value="#FFE1E6">
+          <label for="quickTopColorRose" class="swatch" style="--swatch:#FFE1E6" title="Rose">
+            <span>Rose</span>
+          </label>
+
+          <input id="quickTopColorGray" type="radio" name="quickTopColor" value="#E5E7EB">
+          <label for="quickTopColorGray" class="swatch" style="--swatch:#E5E7EB" title="Light Gray">
+            <span>Light Gray</span>
+          </label>
+        </div>
       </div>
     </section>
 
     <section class="card actions quick-only is-hidden">
-      <h2>3) Generate PDF</h2>
+      <h2>5) Generate PDF</h2>
       <div class="row">
         <button id="quickPdfBtn" type="button" class="primary">Download A4 Label</button>
         <button id="quickPrintBtn" type="button">Print A4 Label</button>
         <button id="quickClearBtn" type="button" class="ghost">Clear</button>
       </div>
-      <p class="note">Quick mode: barcode for part number + manual release input.</p>
+      <p class="note">Quick mode: barcode for part number + manual job number + color select + print.</p>
     </section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/index.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

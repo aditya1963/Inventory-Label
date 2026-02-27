@@ -1,4 +1,4 @@
-# Inventory Label Web App
+![1772212110799](image/README/1772212110799.png)![1772212115179](image/README/1772212115179.png)# Inventory Label Web App
 
 Static web app for mobile/iPad/desktop to:
 - OCR `RELEASE` and `PART NUMBER` from an inventory ticket image

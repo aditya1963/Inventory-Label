@@ -42,6 +42,8 @@
   let quickScanEngine = null;
   let quickZxingReader = null;
   let quickZxingControls = null;
+  let barcodeEngineLoadAttempted = false;
+  let barcodeEngineLoadPromise = null;
 
   scanBtn.addEventListener("click", scanImage);
   pdfBtn.addEventListener("click", downloadPdf);
@@ -122,8 +124,85 @@
     return "BarcodeDetector" in window;
   }
 
+  function getZxingNamespace() {
+    if (window.ZXingBrowser && window.ZXingBrowser.BrowserMultiFormatReader) {
+      return window.ZXingBrowser;
+    }
+    if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
+      return window.ZXing;
+    }
+    if (window.ZXing && window.ZXing.BrowserCodeReader) {
+      return window.ZXing;
+    }
+    return null;
+  }
+
   function isZxingAvailable() {
-    return !!(window.ZXingBrowser && window.ZXingBrowser.BrowserMultiFormatReader);
+    return !!getZxingNamespace();
+  }
+
+  function loadExternalScript(url) {
+    return new Promise((resolve) => {
+      const existing = document.querySelector(`script[data-codex-engine="${url}"]`);
+      if (existing) {
+        if (existing.getAttribute("data-loaded") === "true") {
+          resolve(true);
+          return;
+        }
+        existing.addEventListener("load", () => resolve(true), { once: true });
+        existing.addEventListener("error", () => resolve(false), { once: true });
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.src = url;
+      script.async = true;
+      script.crossOrigin = "anonymous";
+      script.setAttribute("data-codex-engine", url);
+      script.addEventListener("load", () => {
+        script.setAttribute("data-loaded", "true");
+        resolve(true);
+      }, { once: true });
+      script.addEventListener("error", () => resolve(false), { once: true });
+      document.head.appendChild(script);
+    });
+  }
+
+  async function ensureBarcodeEngineLoaded() {
+    if (isNativeBarcodeAvailable() || isZxingAvailable()) {
+      return true;
+    }
+
+    if (barcodeEngineLoadPromise) {
+      await barcodeEngineLoadPromise;
+      return isNativeBarcodeAvailable() || isZxingAvailable();
+    }
+
+    const sources = [
+      "./vendor/zxing-browser.min.js",
+      "https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/index.min.js",
+      "https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js",
+      "https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.4/umd/index.min.js",
+      "https://unpkg.com/@zxing/browser@0.1.4/umd/index.min.js"
+    ];
+
+    barcodeEngineLoadAttempted = true;
+    barcodeEngineLoadPromise = (async () => {
+      for (let i = 0; i < sources.length; i += 1) {
+        const loaded = await loadExternalScript(sources[i]);
+        if (loaded && isZxingAvailable()) {
+          return true;
+        }
+      }
+      return false;
+    })();
+
+    try {
+      await barcodeEngineLoadPromise;
+    } finally {
+      barcodeEngineLoadPromise = null;
+    }
+    return isNativeBarcodeAvailable() || isZxingAvailable();
   }
 
   function isLocalhostHost(host) {
@@ -150,6 +229,9 @@
       return "This browser does not support camera access (getUserMedia).";
     }
     if (!isNativeBarcodeAvailable() && !isZxingAvailable()) {
+      if (barcodeEngineLoadAttempted) {
+        return "No barcode engine could be loaded (network/CDN blocked).";
+      }
       return "No barcode engine is available in this browser.";
     }
     return "";
@@ -418,14 +500,21 @@
   }
 
   function createZXingReader() {
-    if (!isZxingAvailable()) {
+    const ns = getZxingNamespace();
+    if (!ns) {
       return null;
     }
     if (quickZxingReader) {
       return quickZxingReader;
     }
     try {
-      quickZxingReader = new window.ZXingBrowser.BrowserMultiFormatReader();
+      if (typeof ns.BrowserMultiFormatReader === "function") {
+        quickZxingReader = new ns.BrowserMultiFormatReader();
+      } else if (typeof ns.BrowserCodeReader === "function") {
+        quickZxingReader = new ns.BrowserCodeReader();
+      } else {
+        return null;
+      }
       return quickZxingReader;
     } catch (_err) {
       return null;
@@ -561,6 +650,11 @@
     if (currentMode !== "quick") {
       setMode("quick");
     }
+    if (!isNativeBarcodeAvailable() && !isZxingAvailable()) {
+      setQuickStatus("Loading barcode engine...");
+      await ensureBarcodeEngineLoaded();
+    }
+
     const blockerReason = getLiveScanBlockerReason();
     if (blockerReason) {
       if (blockerReason.includes("No barcode engine")) {
@@ -624,7 +718,11 @@
     try {
       quickImageScanBtn.disabled = true;
       if (!isNativeBarcodeAvailable() && !isZxingAvailable()) {
-        setQuickStatus("No barcode engine is available in this browser. Type part number manually.");
+        setQuickStatus("Loading barcode engine...");
+        await ensureBarcodeEngineLoaded();
+      }
+      if (!isNativeBarcodeAvailable() && !isZxingAvailable()) {
+        setQuickStatus("No barcode engine could be loaded (network/CDN blocked). Type part number manually.");
         return;
       }
       setQuickStatus("Scanning barcode from selected image...");

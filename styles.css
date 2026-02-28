@@ -54,15 +54,15 @@ body {
 .hero {
   background: linear-gradient(135deg, #e0f2fe, #ffffff);
   border-radius: 18px;
-  padding: 20px;
+  padding: 10px 18px;
   box-shadow: 0 14px 30px rgba(2, 6, 23, 0.3);
 }
 
 .hero-layout {
   display: flex;
-  gap: 16px;
+  gap: 10px;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .hero-copy {
@@ -71,7 +71,7 @@ body {
 
 .hero-actions {
   display: grid;
-  gap: 8px;
+  gap: 4px;
   justify-items: end;
 }
 
@@ -79,23 +79,27 @@ body {
   justify-self: start;
   font-weight: 700;
   color: #1e293b;
+  font-size: 0.95rem;
 }
 
 .hero-actions .color-picker {
   justify-content: flex-end;
+  gap: 8px;
 }
 
 .hero h1 {
   margin: 0;
   font-family: "Oswald", sans-serif;
-  font-size: clamp(1.8rem, 4.5vw, 3rem);
+  font-size: clamp(1.45rem, 3.1vw, 2.35rem);
   letter-spacing: 0.02em;
+  line-height: 1;
 }
 
 .hero p {
-  margin: 8px 0 0;
+  margin: 2px 0 0;
   color: #334155;
   font-weight: 600;
+  font-size: 0.95rem;
 }
 
 .card {
@@ -179,6 +183,7 @@ button.ghost {
 
 .hero-actions .status {
   margin: 0;
+  font-size: 0.95rem;
 }
 
 .field-grid {
@@ -230,6 +235,12 @@ button.ghost {
   cursor: pointer;
   display: inline-flex;
   box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.05);
+}
+
+.hero .swatch {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
 }
 
 .swatch span {
@@ -305,6 +316,11 @@ textarea {
 
   .hero-actions {
     justify-items: start;
+  }
+
+  .hero .swatch {
+    width: 48px;
+    height: 48px;
   }
 }
 

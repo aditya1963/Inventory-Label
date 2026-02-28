@@ -18,10 +18,32 @@
           <p>Enter or scan part/job values, choose color, then print.</p>
         </div>
         <div class="hero-actions">
-          <div class="row">
-            <button id="pdfBtn" type="button" class="primary">Download A4 Label</button>
-            <button id="printBtn" type="button">Print A4 Label</button>
-            <button id="clearBtn" type="button" class="ghost">Clear</button>
+          <span class="field-label">Top Half Color</span>
+          <div class="color-picker" role="radiogroup" aria-label="Top Half Color">
+            <input id="topColorSky" type="radio" name="topColor" value="#DCEBFF" checked>
+            <label for="topColorSky" class="swatch" style="--swatch:#DCEBFF" title="Sky Blue">
+              <span>Sky Blue</span>
+            </label>
+
+            <input id="topColorMint" type="radio" name="topColor" value="#D9FBE7">
+            <label for="topColorMint" class="swatch" style="--swatch:#D9FBE7" title="Mint">
+              <span>Mint</span>
+            </label>
+
+            <input id="topColorSand" type="radio" name="topColor" value="#FFF1D6">
+            <label for="topColorSand" class="swatch" style="--swatch:#FFF1D6" title="Sand">
+              <span>Sand</span>
+            </label>
+
+            <input id="topColorRose" type="radio" name="topColor" value="#FFE1E6">
+            <label for="topColorRose" class="swatch" style="--swatch:#FFE1E6" title="Rose">
+              <span>Rose</span>
+            </label>
+
+            <input id="topColorGray" type="radio" name="topColor" value="#E5E7EB">
+            <label for="topColorGray" class="swatch" style="--swatch:#E5E7EB" title="Light Gray">
+              <span>Light Gray</span>
+            </label>
           </div>
           <p id="status" class="status">Ready</p>
         </div>
@@ -47,35 +69,11 @@
         </section>
 
         <section class="card">
-          <h2>2) Select Page Color</h2>
-          <div class="field-grid">
-            <span class="field-label">Top Half Color</span>
-            <div class="color-picker" role="radiogroup" aria-label="Top Half Color">
-              <input id="topColorSky" type="radio" name="topColor" value="#DCEBFF" checked>
-              <label for="topColorSky" class="swatch" style="--swatch:#DCEBFF" title="Sky Blue">
-                <span>Sky Blue</span>
-              </label>
-
-              <input id="topColorMint" type="radio" name="topColor" value="#D9FBE7">
-              <label for="topColorMint" class="swatch" style="--swatch:#D9FBE7" title="Mint">
-                <span>Mint</span>
-              </label>
-
-              <input id="topColorSand" type="radio" name="topColor" value="#FFF1D6">
-              <label for="topColorSand" class="swatch" style="--swatch:#FFF1D6" title="Sand">
-                <span>Sand</span>
-              </label>
-
-              <input id="topColorRose" type="radio" name="topColor" value="#FFE1E6">
-              <label for="topColorRose" class="swatch" style="--swatch:#FFE1E6" title="Rose">
-                <span>Rose</span>
-              </label>
-
-              <input id="topColorGray" type="radio" name="topColor" value="#E5E7EB">
-              <label for="topColorGray" class="swatch" style="--swatch:#E5E7EB" title="Light Gray">
-                <span>Light Gray</span>
-              </label>
-            </div>
+          <h2>2) Actions</h2>
+          <div class="row">
+            <button id="pdfBtn" type="button" class="primary">Download A4 Label</button>
+            <button id="printBtn" type="button">Print A4 Label</button>
+            <button id="clearBtn" type="button" class="ghost">Clear</button>
           </div>
         </section>
       </div>

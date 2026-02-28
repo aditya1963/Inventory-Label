@@ -75,6 +75,16 @@ body {
   justify-items: end;
 }
 
+.hero-actions .field-label {
+  justify-self: start;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.hero-actions .color-picker {
+  justify-content: flex-end;
+}
+
 .hero h1 {
   margin: 0;
   font-family: "Oswald", sans-serif;

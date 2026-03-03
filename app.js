@@ -1,6 +1,7 @@
 (function () {
   const partInput = document.getElementById("partInput");
   const jobInput = document.getElementById("jobInput");
+  const descriptionInput = document.getElementById("descriptionInput");
   const focusPartBtn = document.getElementById("focusPartBtn");
   const focusJobBtn = document.getElementById("focusJobBtn");
   const topColorInputs = document.querySelectorAll('input[name="topColor"]');
@@ -15,11 +16,14 @@
   const FIXED_BLEED_MM = 10;
   const DEFAULT_COLOR = "#DCEBFF";
   const TITLE_SIZE = 42;
+  const JOB_MAX_SIZE = 200;
   const PART_WRAP_THRESHOLD = 22;
+  const DESCRIPTION_WRAP_THRESHOLD = 28;
 
   partInput.addEventListener("input", renderPreview);
   partInput.addEventListener("keydown", handlePartEnter);
   jobInput.addEventListener("input", renderPreview);
+  descriptionInput.addEventListener("input", renderPreview);
   topColorInputs.forEach((input) => input.addEventListener("change", renderPreview));
   focusPartBtn.addEventListener("click", () => focusField(partInput));
   focusJobBtn.addEventListener("click", () => focusField(jobInput));
@@ -85,6 +89,10 @@
 
   function textHeight(size) {
     return size * 1.15;
+  }
+
+  function blockHeight(lines, size, lineGap) {
+    return (textHeight(size) * lines.length) + (lineGap * Math.max(0, lines.length - 1));
   }
 
   function splitIntoTwoLines(text) {
@@ -198,6 +206,11 @@
     }
   }
 
+  function drawLinesFromBottom(doc, lines, x, bottomY, size, lineGap) {
+    const topY = bottomY - blockHeight(lines, size, lineGap);
+    drawLinesFromTop(doc, lines, x, topY, size, lineGap);
+  }
+
   function setCanvasFont(ctx, sizePt, scale) {
     const px = Math.max(1, sizePt * scale);
     ctx.font = `700 ${px}px Arial, sans-serif`;
@@ -214,6 +227,11 @@
         y += lineGap;
       }
     }
+  }
+
+  function drawCanvasLinesFromBottom(ctx, lines, x, bottomY, size, lineGap, mapX, mapY, scale) {
+    const topY = bottomY - blockHeight(lines, size, lineGap);
+    drawCanvasLinesFromTop(ctx, lines, x, topY, size, lineGap, mapX, mapY, scale);
   }
 
   function getLayout(pageWidth, pageHeight) {
@@ -236,26 +254,60 @@
       contentX,
       contentY,
       contentWidth,
+      contentHeight,
       topSectionHeight,
       dividerY,
       marginX,
       sectionTop,
+      sectionBottom,
       titleGap,
       usableWidth,
       valueMaxHeight
     };
   }
 
+  function getBottomSectionSpec(layout, hasDescription) {
+    const partTitleY = layout.dividerY + layout.sectionTop;
+    const partValueTop = partTitleY + textHeight(TITLE_SIZE) + layout.titleGap;
+    if (!hasDescription) {
+      return {
+        partTitleY,
+        partValueTop,
+        partValueMaxHeight: layout.valueMaxHeight,
+        descriptionBottomY: null,
+        descriptionMaxHeight: 0
+      };
+    }
+
+    const sectionBottomY = layout.contentY + layout.contentHeight - layout.sectionBottom;
+    const descriptionMaxHeight = Math.min(64, layout.topSectionHeight * 0.24);
+    const descriptionGap = 16;
+    const partValueMaxHeight = Math.max(
+      56,
+      (sectionBottomY - descriptionMaxHeight - descriptionGap) - partValueTop
+    );
+
+    return {
+      partTitleY,
+      partValueTop,
+      partValueMaxHeight,
+      descriptionBottomY: sectionBottomY,
+      descriptionMaxHeight
+    };
+  }
+
   function getFieldValues(usePlaceholders) {
     const jobNumber = normalizeValue(jobInput.value);
     const partNumber = normalizeValue(partInput.value);
+    const description = normalizeValue(descriptionInput.value);
     if (usePlaceholders) {
       return {
         jobNumber: jobNumber || "M22849G",
-        partNumber: partNumber || "ABCD1234EFGH5678IJKL9012MNOP3456QRST7890"
+        partNumber: partNumber || "ABCD1234EFGH5678IJKL9012MNOP3456QRST7890",
+        description
       };
     }
-    return { jobNumber, partNumber };
+    return { jobNumber, partNumber, description };
   }
 
   function getValidatedFields() {
@@ -300,7 +352,7 @@
     doc.text("JOB NUMBER", topX, topY, { baseline: "top" });
 
     const topValueBlock = fitBlock(doc, values.jobNumber, layout.usableWidth, layout.valueMaxHeight, {
-      maxSize: 220,
+      maxSize: JOB_MAX_SIZE,
       minSize: 14,
       maxLines: 1,
       preferWrapped: false
@@ -315,12 +367,12 @@
     );
 
     const bottomX = layout.contentX + layout.marginX;
-    const bottomY = layout.dividerY + layout.sectionTop;
+    const bottomSpec = getBottomSectionSpec(layout, Boolean(values.description));
     doc.setFontSize(TITLE_SIZE);
-    doc.text("PART NUMBER", bottomX, bottomY, { baseline: "top" });
+    doc.text("PART NUMBER", bottomX, bottomSpec.partTitleY, { baseline: "top" });
 
     const preferWrapped = values.partNumber.length >= PART_WRAP_THRESHOLD;
-    const partValueBlock = fitBlock(doc, values.partNumber, layout.usableWidth, layout.valueMaxHeight, {
+    const partValueBlock = fitBlock(doc, values.partNumber, layout.usableWidth, bottomSpec.partValueMaxHeight, {
       maxSize: 220,
       minSize: 16,
       maxLines: 2,
@@ -330,10 +382,33 @@
       doc,
       partValueBlock.lines,
       bottomX,
-      bottomY + textHeight(TITLE_SIZE) + layout.titleGap,
+      bottomSpec.partValueTop,
       partValueBlock.size,
       partValueBlock.lineGap
     );
+
+    if (values.description) {
+      const descriptionBlock = fitBlock(
+        doc,
+        values.description,
+        layout.usableWidth,
+        bottomSpec.descriptionMaxHeight,
+        {
+          maxSize: 34,
+          minSize: 16,
+          maxLines: 2,
+          preferWrapped: values.description.length >= DESCRIPTION_WRAP_THRESHOLD
+        }
+      );
+      drawLinesFromBottom(
+        doc,
+        descriptionBlock.lines,
+        bottomX,
+        bottomSpec.descriptionBottomY,
+        descriptionBlock.size,
+        descriptionBlock.lineGap
+      );
+    }
 
     return doc;
   }
@@ -418,7 +493,7 @@
     ctx.fillText("JOB NUMBER", mapX(topX), mapY(topY));
 
     const topValueBlock = fitBlock(measureApi, values.jobNumber, layout.usableWidth, layout.valueMaxHeight, {
-      maxSize: 220,
+      maxSize: JOB_MAX_SIZE,
       minSize: 14,
       maxLines: 1,
       preferWrapped: false
@@ -436,28 +511,60 @@
     );
 
     const bottomX = layout.contentX + layout.marginX;
-    const bottomY = layout.dividerY + layout.sectionTop;
+    const bottomSpec = getBottomSectionSpec(layout, Boolean(values.description));
     setCanvasFont(ctx, TITLE_SIZE, scale);
-    ctx.fillText("PART NUMBER", mapX(bottomX), mapY(bottomY));
+    ctx.fillText("PART NUMBER", mapX(bottomX), mapY(bottomSpec.partTitleY));
 
     const preferWrapped = values.partNumber.length >= PART_WRAP_THRESHOLD;
-    const partValueBlock = fitBlock(measureApi, values.partNumber, layout.usableWidth, layout.valueMaxHeight, {
+    const partValueBlock = fitBlock(
+      measureApi,
+      values.partNumber,
+      layout.usableWidth,
+      bottomSpec.partValueMaxHeight,
+      {
       maxSize: 220,
       minSize: 16,
       maxLines: 2,
       preferWrapped
-    });
+      }
+    );
     drawCanvasLinesFromTop(
       ctx,
       partValueBlock.lines,
       bottomX,
-      bottomY + textHeight(TITLE_SIZE) + layout.titleGap,
+      bottomSpec.partValueTop,
       partValueBlock.size,
       partValueBlock.lineGap,
       mapX,
       mapY,
       scale
     );
+
+    if (values.description) {
+      const descriptionBlock = fitBlock(
+        measureApi,
+        values.description,
+        layout.usableWidth,
+        bottomSpec.descriptionMaxHeight,
+        {
+          maxSize: 34,
+          minSize: 16,
+          maxLines: 2,
+          preferWrapped: values.description.length >= DESCRIPTION_WRAP_THRESHOLD
+        }
+      );
+      drawCanvasLinesFromBottom(
+        ctx,
+        descriptionBlock.lines,
+        bottomX,
+        bottomSpec.descriptionBottomY,
+        descriptionBlock.size,
+        descriptionBlock.lineGap,
+        mapX,
+        mapY,
+        scale
+      );
+    }
   }
 
   function downloadPdf() {
@@ -501,6 +608,7 @@
   function clearForm() {
     partInput.value = "";
     jobInput.value = "";
+    descriptionInput.value = "";
     const defaultSwatch = document.querySelector(`input[name="topColor"][value="${DEFAULT_COLOR}"]`);
     if (defaultSwatch) {
       defaultSwatch.checked = true;
